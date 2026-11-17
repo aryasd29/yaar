@@ -1,26 +1,97 @@
 @import "tailwindcss";
+@import "@fontsource-variable/nunito-sans/wght.css";
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource/caveat/600.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Isle design tokens */
+@theme {
+  --color-coral: #ff7a5c;
+  --color-coral-soft: #ffe0d6;
+  --color-coral-ink: #a63a22;
+  --color-butter: #ffc94d;
+  --color-butter-soft: #fff0c9;
+  --color-butter-ink: #6b4e00;
+  --color-sage: #6fd1bf;
+  --color-sage-soft: #d8f3ee;
+  --color-sage-ink: #0f5e55;
+  --color-peri: #7db9ec;
+  --color-peri-soft: #dceefb;
+  --color-peri-ink: #1d4f86;
+  --color-vanilla: #f4e7d3;
+  --color-paper: #fff9f0;
+  --color-charcoal: #1b2d45;
+  --color-muted: #5d6878;
+  --color-line: #e6d6be;
+  --color-danger: #c4382a;
+
+  --font-display: "Nunito Sans Variable", "Nunito Sans", system-ui, sans-serif;
+  --font-sans: "Inter Variable", "Inter", system-ui, sans-serif;
+  --font-hand: "Caveat", cursive;
+
+  --radius-card: 22px;
+  --radius-btn: 16px;
+  --radius-input: 14px;
+
+  --shadow-soft: 0 6px 20px -8px rgb(27 45 69 / 0.18), 0 2px 6px -2px rgb(27 45 69 / 0.08);
+  --shadow-lift: 0 14px 30px -12px rgb(27 45 69 / 0.28);
+
+  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+html, body {
+  background: var(--color-vanilla);
+  color: var(--color-charcoal);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+/* Visible keyboard focus everywhere */
+:focus-visible {
+  outline: 3px solid var(--color-peri-ink);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Tape strip used on scrapbook polaroids */
+.tape {
+  position: absolute;
+  width: 64px;
+  height: 18px;
+  background: rgb(255 201 77 / 0.75);
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-3deg);
+  border-radius: 2px;
+}
+
+/* Paper dot texture for the app canvas */
+.paper-dots {
+  background-image: radial-gradient(rgb(27 45 69 / 0.06) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* ---------- Island motion ---------- */
+@keyframes isle-drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.wave-drift { animation: isle-drift var(--drift, 16s) linear infinite; will-change: transform; }
+@keyframes isle-twinkle { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+.twinkle { animation: isle-twinkle var(--tw, 3s) ease-in-out infinite; }
+@keyframes isle-bob { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-6px) rotate(3deg); } }
+.bob { animation: isle-bob var(--bob, 3.2s) ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .wave-drift, .twinkle, .bob { animation: none !important; } }
