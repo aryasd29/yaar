@@ -14,6 +14,8 @@ import { DateMiniCard } from "@/components/DateBits";
 import { ChatList } from "@/components/ChatList";
 import { Coco } from "@/components/Coco";
 import { matchState, useYaar } from "@/lib/store";
+import { PlusLock } from "@/components/PlusBits";
+import { isPlus } from "@/lib/plus";
 import { conversationPulse, DAY, fmtTime, redFlags, SITUATIONS, SOFT_EXIT_REASONS, styleOf, suggestReplies, suggestIdeas, type Situation } from "@/lib/logic";
 
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
@@ -31,7 +33,8 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 function Chat({ id }: { id: string }) {
   const me = useRequireMe();
   const router = useRouter();
-  const { matches, messages, people, plans, settings, sendMessage, now, dismissedNudges, dismissNudge, softExit, dismissedFlags, dismissFlag } = useYaar();
+  const { matches, messages, people, plans, settings, sendMessage, now, dismissedNudges, dismissNudge, softExit, dismissedFlags, dismissFlag, plus, sparkAgain, toast } = useYaar();
+  const plusOn = isPlus(plus, now());
   const [reportOpen, setReportOpen] = useState(false);
   const match = matches.find((m) => m.id === id);
   const them = people.find((p) => p.id === match?.users[1]);
@@ -118,6 +121,11 @@ function Chat({ id }: { id: string }) {
         {ended && (
           <Card tone="peri" className="mt-4 text-center">
             <p className="text-[14.5px] text-peri-ink">{match.endReason === "blocked" ? "You blocked this person." : match.endedBy === me.id ? `You closed this match. ${them.name} got a kind note, not your reason.` : "This match expired after 15 quiet days."}</p>
+            {match.status !== "ended" && (plusOn
+              ? (plus!.sparked.includes(match.id)
+                ? <p className="mt-2 text-[13px] text-muted">You&apos;ve already sparked this chat once.</p>
+                : <Button className="mt-3" onClick={() => { if (sparkAgain(match.id)) toast(`Sparked! ${them.name} will see your chat is open again.`, "good"); }}><Sparkles size={17} /> Spark again</Button>)
+              : <PlusLock className="mt-3 text-left" title="Spark again" body={`Reopen this chat with ${them.name}. Once per match, with Isle Plus.`} />)}
           </Card>
         )}
         <div ref={endRef} />

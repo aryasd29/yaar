@@ -1,4 +1,7 @@
 "use client";
+import { PlusLock, PlusTag } from "@/components/PlusBits";
+import { isPlus, whyYouTwo } from "@/lib/plus";
+import type { Profile } from "@/lib/types";
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -99,6 +102,7 @@ function Scrapbook({ id }: { id: string }) {
         </section>
 
         {!preview && <SharedGround me={me} p={p} />}
+        {!preview && <WhyYouTwo me={me} p={p} />}
 
         <Card tone="butter">
           <div className="flex items-center justify-between"><SectionLabel>{hot.prompt ?? "Hot take"}</SectionLabel>{!preview && <ReactBtn label="hot take" reacted={reactedKey === "hottake:"} onClick={() => ask({ kind: "hottake", label: `“${hot.answer}”` })} />}</div>
@@ -165,5 +169,18 @@ function HeartBurst() {
           transition={{ duration: 0.8, ease: "easeOut" }}>{["💗", "❤️", "✨"][i % 3]}</motion.span>
       ))}
     </span>
+  );
+}
+
+/** Isle Plus: the reasons Isle introduced you, with openers. */
+function WhyYouTwo({ me, p }: { me: Profile; p: Profile }) {
+  const { plus, now } = useYaar();
+  if (!isPlus(plus, now())) return <PlusLock title="Why you two?" body={`See exactly why Isle introduced you to ${p.name}, with openers to use.`} />;
+  const reasons = whyYouTwo(me, p);
+  return (
+    <Card tone="peri">
+      <div className="flex items-center gap-2"><SectionLabel>Why you two?</SectionLabel><PlusTag className="-mt-2" /></div>
+      <ul className="space-y-2 text-[14.5px] text-peri-ink">{reasons.map((r) => <li key={r} className="flex gap-2"><span aria-hidden>🌊</span><span>{r}</span></li>)}</ul>
+    </Card>
   );
 }

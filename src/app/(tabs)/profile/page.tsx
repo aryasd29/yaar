@@ -1,11 +1,13 @@
 "use client";
+import { PlusLock, PlusTag } from "@/components/PlusBits";
+import { isPlus, scrapbookReview } from "@/lib/plus";
 import { amAdmin } from "@/lib/remote";
 import { DeleteAccount } from "@/components/DeleteAccount";
 import { NotificationBell } from "@/components/PageHeader";
 import Link from "next/link";
 import clsx from "clsx";
 import { motion } from "motion/react";
-import { BatteryMedium, Bell, Check, ChevronRight, Eye, Lock, LogOut, Trash2, MapPin, Pencil, Plus, ShieldCheck, SlidersHorizontal, UserCheck } from "lucide-react";
+import { BatteryMedium, Bell, Check, ChevronRight, Eye, Lock, LogOut, Trash2, MapPin, Pencil, Plus, ShieldCheck, SlidersHorizontal, Sparkles, UserCheck } from "lucide-react";
 import { Loading, useRequireMe } from "@/components/Shell";
 import { Moment } from "@/components/Moment";
 import { Badge, Button, Chip } from "@/components/ui";
@@ -34,7 +36,8 @@ const TONE = {
 
 export default function MyProfile() {
   const me = useRequireMe();
-  const { prefs, plans, settings, setSettings, signOut, updateMe, toast } = useYaar();
+  const { prefs, plans, settings, setSettings, signOut, updateMe, toast, plus, now } = useYaar();
+  const plusOn = isPlus(plus, now());
   const [voiceOpen, setVoiceOpen] = useState(false);
   if (!me) return <Loading />;
 
@@ -80,6 +83,7 @@ export default function MyProfile() {
           </section>
 
           <Completion me={me} c={completion} />
+          <CocoReview />
 
           {/* Private to you */}
           <section aria-labelledby="private" className="rounded-[26px] border-2 border-dashed border-charcoal/25 p-4">
@@ -195,8 +199,9 @@ export default function MyProfile() {
       <section aria-labelledby="settings" className="mt-10 border-t-2 border-dashed border-charcoal/15 pt-8">
         <h2 id="settings" className="text-[22px]">Account and settings</h2>
         <nav aria-label="Settings" className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <SettingRow href="/plus" icon={<Sparkles size={20} />} label="Isle Plus" summary={plusOn ? `On until ${new Date(plus!.until).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : "Free Tables seat monthly, 15% off café dates, and more"} />
           <SettingRow href="/profile/settings/preferences" icon={<SlidersHorizontal size={20} />} label="Dating preferences" summary={`${pref.who}, ages ${pref.ages}, within ${pref.distance}`} />
-          <SettingRow href="/profile/settings/privacy" icon={<UserCheck size={20} />} label="Verification and privacy" summary={`${me.verified ? "Verified" : "Not verified"}. Location: ${LOCATION_LABEL[settings.locationVisibility ?? "area"].toLowerCase()}`} />
+          <SettingRow href="/profile/settings/privacy" icon={<UserCheck size={20} />} label="Verification and privacy" summary={`${me.verified ? "Selfie-checked" : "Not checked"}. Location: ${LOCATION_LABEL[settings.locationVisibility ?? "area"].toLowerCase()}`} />
           <SettingRow href="/profile/settings/battery" icon={<BatteryMedium size={20} />} label="Social battery" summary={`${BATTERY[me.battery].emoji} ${BATTERY[me.battery].label}: ${BATTERY[me.battery].desc.toLowerCase()}`} />
           <SettingRow href="/profile/settings/notifications" icon={<Bell size={20} />} label="Notifications" summary={`${notifOn} of 4 on`} />
           <SettingRow href="/profile/settings/safety" icon={<ShieldCheck size={20} />} label="Safety" summary={settings.trustedContact ? `Trusted contact: ${settings.trustedContact.name}` : "Add a trusted contact for dates"} />
@@ -323,4 +328,38 @@ function AdminLink() {
   useEffect(() => { void amAdmin().then(setOk); }, []);
   if (!ok) return null;
   return <Link href="/admin" className="mt-4 flex min-h-12 items-center justify-center gap-2 rounded-[18px] border-2 border-dashed border-charcoal/40 font-semibold">Moderation and metrics</Link>;
+}
+
+/** Isle Plus: Coco's honest scrapbook review and best cover photo. Free members see what it does. */
+function CocoReview() {
+  const { me, plus, now, updateMe } = useYaar();
+  if (!me) return null;
+  if (!isPlus(plus, now())) return <PlusLock className="mt-4" title="Coco's scrapbook review" body="Honest tips on your photos, captions and hot take, and which photo makes the best cover." />;
+  const r = scrapbookReview(me);
+  const best = me.moments.filter((m) => m.photoUrl).sort((a, b) => (b.caption?.length ?? 0) - (a.caption?.length ?? 0))[0];
+  return (
+    <section className="mt-4 rounded-[24px] bg-paper p-4 shadow-soft" aria-labelledby="coco-review">
+      <div className="flex items-center gap-3">
+        <Coco mood={r.score >= 80 ? "cheering" : "thinking"} size={56} bob={false} />
+        <div className="flex-1">
+          <h2 id="coco-review" className="flex items-center gap-2 text-[17px]">Coco&apos;s review <PlusTag /></h2>
+          <p className="text-[13px] text-muted">Scrapbook strength: <b className="text-charcoal">{r.score}%</b></p>
+        </div>
+      </div>
+      <ul className="mt-3 space-y-1.5 text-[13.5px]">
+        {r.tips.map((t) => (
+          <li key={t.text} className="flex items-start gap-2">
+            <span className={clsx("mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold", t.ok ? "bg-sage text-charcoal" : "bg-butter text-charcoal")}>{t.ok ? "✓" : "!"}</span>
+            {t.href && !t.ok ? <Link href={t.href} className="underline-offset-2 hover:underline">{t.text}</Link> : <span className={t.ok ? "text-muted" : ""}>{t.text}</span>}
+          </li>
+        ))}
+      </ul>
+      {r.coverTip && best && (
+        <div className="mt-3 flex items-center gap-2 rounded-[16px] bg-butter-soft p-3 text-[13.5px] text-butter-ink">
+          <span className="flex-1">{r.coverTip}</span>
+          <Button variant="secondary" className="!min-h-9 shrink-0 !px-3" onClick={() => updateMe({ moments: [best, ...me.moments.filter((m) => m.id !== best.id)] })}>Make cover</Button>
+        </div>
+      )}
+    </section>
+  );
 }

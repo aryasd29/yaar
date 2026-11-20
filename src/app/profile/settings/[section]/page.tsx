@@ -1,4 +1,6 @@
 "use client";
+import { PlusLock, PlusTag } from "@/components/PlusBits";
+import { DIET, HABIT, LANGUAGES, filterCount, isPlus } from "@/lib/plus";
 import { DeleteAccount } from "@/components/DeleteAccount";
 import { use, useState } from "react";
 import clsx from "clsx";
@@ -18,7 +20,8 @@ export default function SettingsPage({ params }: { params: Promise<{ section: st
 
 function Settings({ section }: { section: string }) {
   const me = useRequireMe();
-  const { prefs, setPrefs, settings, setSettings, setBattery, updateMe, toast, blocks, people } = useYaar();
+  const { prefs, setPrefs, settings, setSettings, setBattery, updateMe, toast, blocks, people, plus, now } = useYaar();
+  const plusOn = isPlus(plus, now());
   const [contact, setContact] = useState(settings.trustedContact ?? { name: "", phone: "" });
   const [contactErr, setContactErr] = useState("");
   if (!me) return <Loading />;
@@ -52,6 +55,25 @@ function Settings({ section }: { section: string }) {
                 <Chip key={k} active={prefs.intents.includes(k)} onClick={() => setPrefs({ intents: prefs.intents.includes(k) ? prefs.intents.filter((x) => x !== k) : [...prefs.intents, k] })}>{INTENT_SHORT[k]}</Chip>
               ))}</div>
             </Card>
+            {plusOn ? (
+              <Card>
+                <SectionLabel>Lifestyle filters</SectionLabel>
+                <p className="-mt-1 mb-3 flex items-center gap-2 text-[12.5px] text-muted"><PlusTag /> Only changes who you see. People who left an answer blank still show up.</p>
+                {([["Food", "diet", DIET], ["Drinking", "drinks", HABIT], ["Smoking", "smokes", HABIT]] as const).map(([label, key, opts]) => (
+                  <div key={key} className="mb-3">
+                    <p className="mb-1.5 text-[13px] font-semibold">{label}</p>
+                    <div className="flex flex-wrap gap-2">{Object.entries(opts).map(([k, l]) => { const cur = (prefs.lifestyle?.[key] ?? []) as string[]; const on = cur.includes(k); return (
+                      <Chip key={k} active={on} onClick={() => setPrefs({ lifestyle: { ...prefs.lifestyle, [key]: on ? cur.filter((x) => x !== k) : [...cur, k] } })}>{l}</Chip>); })}</div>
+                  </div>
+                ))}
+                <p className="mb-1.5 text-[13px] font-semibold">Speaks at least one of</p>
+                <div className="flex flex-wrap gap-2">{LANGUAGES.map((l) => { const cur = prefs.lifestyle?.languages ?? []; const on = cur.includes(l); return (
+                  <Chip key={l} active={on} onClick={() => setPrefs({ lifestyle: { ...prefs.lifestyle, languages: on ? cur.filter((x) => x !== l) : [...cur, l] } })}>{l}</Chip>); })}</div>
+                {filterCount(prefs) > 0 && <button className="mt-3 min-h-10 text-[13.5px] font-semibold underline underline-offset-2" onClick={() => setPrefs({ lifestyle: {} })}>Clear lifestyle filters</button>}
+              </Card>
+            ) : (
+              <PlusLock title="Lifestyle filters" body="Filter your introductions by food habits, drinking, smoking and languages." />
+            )}
             <p className="text-center text-[12.5px] text-muted">Changes apply to your next drop.</p>
           </>
         )}
@@ -74,6 +96,9 @@ function Settings({ section }: { section: string }) {
               <Input label="College (private)" value={me.college ?? ""} onChange={(e) => updateMe({ college: e.target.value || undefined })} placeholder="College" />
               <Toggle checked={settings.hideFromWork} onChange={(v) => setSettings({ hideFromWork: v })} label="Hide me from colleagues" />
               <Toggle checked={settings.hideFromCollege} onChange={(v) => setSettings({ hideFromCollege: v })} label="Hide me from classmates" />
+              {plusOn
+                ? <Toggle checked={!!me?.incognito} onChange={(v) => updateMe({ incognito: v })} label="Incognito (Plus)" description="Only people you've reacted to can see your scrapbook. You can still see everyone in your Tide." />
+                : <PlusLock compact title="Incognito mode" body="" />}
               <Toggle checked={settings.showWorkAfterMatch} onChange={(v) => setSettings({ showWorkAfterMatch: v })} label="Show work and college to matches" description="Never shown before a match" />
               <p className="text-[12.5px] text-muted">This lowers the chance colleagues see you, but someone could still recognise your photos.</p>
             </Card>

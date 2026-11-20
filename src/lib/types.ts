@@ -53,6 +53,10 @@ export interface Profile {
   battery: Battery;
   /** Personal touches for the scrapbook page. */
   theme?: ScrapTheme;
+  /** Lifestyle basics people can filter on (Isle Plus). All optional. */
+  lifestyle?: Lifestyle;
+  /** Isle Plus incognito: only people you've reacted to can see you. */
+  incognito?: boolean;
   /** demo-only behaviour for simulated users */
   demo?: { reactsBack?: boolean; replies?: string[] };
 }
@@ -106,6 +110,8 @@ export interface DatePlan {
   slot?: string; // ISO
   stage: PlanStage;
   deposit: Record<string, boolean>;
+  /** Coffee-and-dessert bundle at the venue, paid through Isle. */
+  bundle?: Record<string, { paid: number; paymentId?: string }>;
   /** Razorpay payment ids for deposits (test mode). */
   depositPayment?: Record<string, string>;
   checkins: Record<string, boolean>;
@@ -122,6 +128,32 @@ export interface Prefs {
   ageMax: number;
   distanceKm: number;
   intents: Intent[];
+  /** Isle Plus lifestyle filters. Empty or missing = no filter. */
+  lifestyle?: { diet?: Diet[]; drinks?: Habit[]; smokes?: Habit[]; languages?: string[] };
+}
+
+export type Diet = "veg" | "nonveg" | "eggetarian" | "jain" | "vegan";
+export type Habit = "no" | "sometimes" | "yes";
+export type Pets = "have" | "love" | "no";
+export interface Lifestyle { diet?: Diet; drinks?: Habit; smokes?: Habit; languages?: string[]; pets?: Pets }
+
+export type PlusPlan = "intro" | "monthly" | "quarterly";
+/** Isle Plus membership on this account. */
+export interface PlusState {
+  plan: PlusPlan;
+  since: number;
+  /** Paid up to here. After cancelling it stays active until this date. */
+  until: number;
+  autoRenew: boolean;
+  paymentId?: string;
+  /** "YYYY-MM" months in which the free Tables seat was used. */
+  freeSeatsUsed: string[];
+  /** Matches don't close while frozen. */
+  freezeUntil?: number;
+  /** Matches reopened with Spark again (once each). */
+  sparked: string[];
+  /** The day key of the last Second Tide. */
+  secondTideDay?: string;
 }
 
 export type LocationVisibility = "area" | "city" | "hidden";

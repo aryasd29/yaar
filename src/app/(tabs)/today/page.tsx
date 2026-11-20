@@ -1,4 +1,7 @@
 "use client";
+import { RotateCcw } from "lucide-react";
+import { PlusLock, PlusTag } from "@/components/PlusBits";
+import { SECOND_TIDE_HOUR, SECOND_TIDE_SIZE, isPlus } from "@/lib/plus";
 import { SKY, SkyBodies, Waves, skyPhase } from "@/components/Sea";
 import { NotificationBell } from "@/components/PageHeader";
 import { useCallback, useEffect, useState } from "react";
@@ -32,6 +35,8 @@ export default function Today() {
   const [tide, setTide] = useState(false);
   const [landed, setLanded] = useState(true);
   useEffect(() => { if (me) ensureDrop(); }, [me, ensureDrop]);
+  // Check again every minute so the Second Tide (Plus) lands at 10 PM without a reload.
+  useEffect(() => { if (!me) return; const id = setInterval(() => ensureDrop(), 60_000); return () => clearInterval(id); }, [me, ensureDrop]);
   // The tide rolls in once per drop, the first time you see it.
   const tideKey = drop.day;
   const introCount = drop.ids.length;
@@ -166,6 +171,7 @@ export default function Today() {
             )}
           </section>
         )}
+        {me.battery !== "low" && <PlusTideRow />}
       </div>
 
       <div className="px-5 md:px-8 lg:hidden">
@@ -215,5 +221,34 @@ function BottleIcon({ open = false }: { open?: boolean }) {
       <rect x="17" y="10.5" width="4" height="5" rx="1.2" fill={open ? "transparent" : "#C98D5B"} stroke="#1b2d45" strokeWidth="1.6" strokeDasharray={open ? "2 2" : undefined} />
       {open && <path d="M7 13 H14" stroke="#FF7A5C" strokeWidth="2" strokeLinecap="round" />}
     </svg>
+  );
+}
+
+/** Isle Plus on Today: the Second Tide and Rewind. Free members see a gentle teaser. */
+function PlusTideRow() {
+  const { plus, now, drop, passes, rewind, people, toast } = useYaar();
+  const router = useRouter();
+  const t = now();
+  if (!isPlus(plus, t)) return <PlusLock className="mt-8 lg:col-span-2" title="Second Tide at 10 PM" body={`Up to ${SECOND_TIDE_SIZE} more bottles each night, on top of your evening Tide. Plus also lets you rewind a pass.`} />;
+  const arrived = plus!.secondTideDay === drop.day;
+  const hour = new Date(t).getHours();
+  const last = passes.length ? people.find((p) => p.id === passes[passes.length - 1]) : undefined;
+  return (
+    <div className="mt-8 grid gap-3 md:grid-cols-2 lg:col-span-2">
+      <div className="flex items-center gap-3 rounded-[22px] bg-peri-soft p-4 text-peri-ink">
+        <Coco mood={arrived ? "cheering" : "calm"} size={52} bob={false} />
+        <div>
+          <p className="flex items-center gap-2 font-semibold text-charcoal">Second Tide <PlusTag /></p>
+          <p className="text-[13.5px]">{arrived ? "Tonight's extra bottles are in your Tide above." : hour >= SECOND_TIDE_HOUR ? "Checking the shore for tonight's extra bottles…" : `Up to ${SECOND_TIDE_SIZE} more bottles wash up at 10 PM tonight.`}</p>
+        </div>
+      </div>
+      {last && (
+        <div className="flex items-center gap-3 rounded-[22px] bg-butter-soft p-4 text-butter-ink">
+          <RotateCcw size={22} className="shrink-0" />
+          <p className="flex-1 text-[13.5px]">Passed on <b className="text-charcoal">{last.name}</b> too quickly?</p>
+          <Button variant="secondary" className="!min-h-10 shrink-0 !px-3" onClick={() => { const id = rewind(); if (id) { toast(`${last.name} is back in your Tide.`, "good"); router.push(`/u/${id}`); } }}>Rewind</Button>
+        </div>
+      )}
+    </div>
   );
 }

@@ -1,4 +1,6 @@
 "use client";
+import { DIET, HABIT, LANGUAGES, PETS } from "@/lib/plus";
+import type { Diet, Habit, Pets } from "@/lib/types";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
@@ -89,11 +91,35 @@ function EditForm({ me }: { me: Profile }) {
             ))}</div>
           ))}</Card>
         </section>
+        <section id="lifestyle" className="scroll-mt-20">
+          <SectionLabel>Lifestyle (optional)</SectionLabel>
+          <Card className="space-y-4">
+            <p className="text-[13px] text-muted">Only used by people&apos;s lifestyle filters. Leave anything blank and you&apos;ll never be filtered out on it.</p>
+            <LifestyleRow label="Food" options={Object.entries(DIET)} value={d.lifestyle?.diet} onChange={(v) => set({ lifestyle: { ...d.lifestyle, diet: v as Diet | undefined } })} />
+            <LifestyleRow label="Drinking" options={Object.entries(HABIT)} value={d.lifestyle?.drinks} onChange={(v) => set({ lifestyle: { ...d.lifestyle, drinks: v as Habit | undefined } })} />
+            <LifestyleRow label="Smoking" options={Object.entries(HABIT)} value={d.lifestyle?.smokes} onChange={(v) => set({ lifestyle: { ...d.lifestyle, smokes: v as Habit | undefined } })} />
+            <LifestyleRow label="Pets" options={Object.entries(PETS)} value={d.lifestyle?.pets} onChange={(v) => set({ lifestyle: { ...d.lifestyle, pets: v as Pets | undefined } })} />
+            <div>
+              <p className="mb-1.5 text-[13px] font-semibold">Languages you speak</p>
+              <div className="flex flex-wrap gap-2">{LANGUAGES.map((l) => { const on = d.lifestyle?.languages?.includes(l); return (
+                <Chip key={l} active={on} onClick={() => set({ lifestyle: { ...d.lifestyle, languages: on ? d.lifestyle!.languages!.filter((x) => x !== l) : [...(d.lifestyle?.languages ?? []), l] } })}>{l}</Chip>); })}</div>
+            </div>
+          </Card>
+        </section>
       </main>
       <div className="sticky bottom-0 z-20 bg-gradient-to-t from-vanilla via-vanilla to-vanilla/0 px-5 pb-6 pt-6">
         {err && <p role="alert" className="mb-2 rounded-xl bg-coral-soft px-3 py-2 text-[13.5px] text-coral-ink">{err}</p>}
         <Button full onClick={save}>Save scrapbook</Button>
       </div>
     </>
+  );
+}
+
+function LifestyleRow({ label, options, value, onChange }: { label: string; options: [string, string][]; value?: string; onChange: (v: string | undefined) => void }) {
+  return (
+    <div>
+      <p className="mb-1.5 text-[13px] font-semibold">{label}</p>
+      <div className="flex flex-wrap gap-2">{options.map(([k, l]) => <Chip key={k} active={value === k} onClick={() => onChange(value === k ? undefined : k)}>{l}</Chip>)}</div>
+    </div>
   );
 }

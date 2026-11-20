@@ -3,10 +3,12 @@ import clsx from "clsx";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Bell, Compass, Heart, MessageCircle, Sun, User } from "lucide-react";
+import { Bell, Sparkles, Compass, Heart, MessageCircle, Sun, User } from "lucide-react";
 import { useNotifications } from "@/lib/notifications";
 import { bootAuth } from "@/lib/remote";
 import { Logo } from "./Logo";
+import { TestCheckout } from "./TestCheckout";
+import { isPlus } from "@/lib/plus";
 import { suggestIdeas } from "@/lib/logic";
 import { Moment } from "./Moment";
 import { Waves } from "./Sea";
@@ -69,6 +71,7 @@ export function SideNav() {
   const me = useYaar((s) => s.me);
   const { unread } = useNotifications();
   const notifOn = path.startsWith("/notifications");
+  const plusOn = useYaar((st) => isPlus(st.plus, st.now()));
   return (
     <aside className="sticky top-0 hidden h-dvh w-[248px] shrink-0 flex-col border-r border-line bg-paper/70 px-4 py-6 lg:flex">
       <Link href="/today" className="flex items-center gap-2 px-2 font-display text-[30px]">
@@ -95,6 +98,14 @@ export function SideNav() {
               <Bell size={21} strokeWidth={notifOn ? 2.4 : 2} />
               <span className="flex-1">Notifications</span>
               {unread > 0 && <span className="grid h-6 min-w-6 place-items-center rounded-full bg-coral px-1.5 text-[12px] font-bold text-charcoal">{unread > 9 ? "9+" : unread}</span>}
+            </Link>
+          </li>
+          <li>
+            <Link href="/plus" aria-current={path.startsWith("/plus") ? "page" : undefined}
+              className={clsx("flex min-h-12 items-center gap-3 rounded-[16px] px-3 text-[15.5px] font-semibold transition", path.startsWith("/plus") ? "bg-butter-soft text-butter-ink" : "text-charcoal hover:bg-charcoal/5")}>
+              <Sparkles size={21} />
+              <span className="flex-1">Isle Plus</span>
+              {plusOn && <span className="rounded-full bg-butter px-2 py-0.5 text-[11px] font-bold">On</span>}
             </Link>
           </li>
         </ul>
@@ -144,6 +155,7 @@ export function Frame({ children, nav = false, bare = false, width, className }:
         <Toasts />
         <MatchCelebration />
         <Suspended />
+        <TestCheckout />
         {nav && <InstallPrompt />}
       </div>
     </div>

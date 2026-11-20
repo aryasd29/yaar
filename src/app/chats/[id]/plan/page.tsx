@@ -1,5 +1,9 @@
 "use client";
-import { isSample, payDeposit } from "@/lib/remote";
+import Link from "next/link";
+import { isSample, track } from "@/lib/remote";
+import { pay, type PayItem } from "@/lib/pay";
+import { bundlePrice, BUNDLE_PRICE, isPlus } from "@/lib/plus";
+import { PlusTag } from "@/components/PlusBits";
 import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
@@ -33,11 +37,15 @@ function Planner({ matchId }: { matchId: string }) {
   const [noOverlap, setNoOverlap] = useState(false);
   const [custom, setCustom] = useState("");
   const [deposit, setDeposit] = useState(false);
+  const [bundle, setBundle] = useState(false);
   const [share, setShare] = useState(!!settings.trustedContact);
   const [remind, setRemind] = useState(true);
   const [done, setDone] = useState(false);
   const [paying, setPaying] = useState(false);
   const toast = useYaar((s) => s.toast);
+  const plusOn = useYaar((s) => isPlus(s.plus, s.now()));
+  const bPrice = bundlePrice(plusOn);
+  const total = (deposit ? 99 : 0) + (bundle ? bPrice : 0);
 
   const days = useMemo(() => {
     const base = new Date(now()); base.setHours(0, 0, 0, 0);
@@ -173,8 +181,12 @@ function Planner({ matchId }: { matchId: string }) {
             <DateCard planId={plan.id} />
             <Card>
               <Toggle checked={deposit} onChange={setDeposit} label="Lock it in with ₹99 (optional)" description="Both pay ₹99, held safely. Both show up: full refund. One no-show: the person who came gets both. Neither: both refunded minus a small fee." />
-              {deposit && <div className="mt-1 flex items-center gap-2"><PrototypeTag>Test mode: Razorpay test payments only, no real money moves</PrototypeTag></div>}
             </Card>
+            <Card>
+              <Toggle checked={bundle} onChange={setBundle} label={`Add coffee and dessert for two · ₹${bPrice}`} description="Prepaid at a partner café near your spot. Show the code when you arrive; unused bundles are refunded." />
+              <p className="-mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">{plusOn ? <><PlusTag /> 15% off applied (was ₹{BUNDLE_PRICE}).</> : <>₹{bundlePrice(true)} with <Link href="/plus" className="font-semibold underline">Isle Plus</Link>.</>}</p>
+            </Card>
+            {total > 0 && <div className="flex items-center gap-2"><PrototypeTag>Test mode: Razorpay test payments only, no real money moves</PrototypeTag></div>}
             <Card>
               <SectionLabel>Date Assurance</SectionLabel>
               <Toggle checked={share} onChange={setShare} label="Share plan with a trusted contact" description={settings.trustedContact ? `${settings.trustedContact.name} gets the place and time` : "Add a contact in Safety settings"} />
@@ -194,17 +206,27 @@ function Planner({ matchId }: { matchId: string }) {
           ) : (
             <Button full disabled={paying} onClick={async () => {
               let paidId: string | undefined;
-              if (deposit) {
+              if (total > 0) {
+                const items: PayItem[] = [];
+                const lines: string[] = [];
+                if (deposit) { items.push({ kind: "deposit" }); lines.push("Show-up promise · ₹99 (refunded when you both turn up)"); }
+                if (bundle) { items.push({ kind: "bundle", plus: plusOn }); lines.push(`Coffee and dessert for two · ₹${bPrice}`); }
                 setPaying(true);
-                const r = await payDeposit(plan.id, { name: me.name });
+                const r = await pay(items, { name: me.name }, `Your date with ${them?.name ?? "your match"}`, lines);
                 setPaying(false);
                 if (r.status === "cancelled") return;
                 if (r.status === "error") return toast(r.error, "warn");
-                if (r.status === "paid") paidId = r.paymentId;
+                paidId = r.paymentId;
+                if (bundle) track("bundle_bought", { plus: plusOn, amount: bPrice });
               }
-              updatePlan(plan.id, { deposit: { ...plan.deposit, [me.id]: deposit }, ...(paidId ? { depositPayment: { ...(plan.depositPayment ?? {}), [me.id]: paidId } } : {}), trustedContact: share ? settings.trustedContact?.name : undefined, checkInReminder: remind });
+              updatePlan(plan.id, {
+                deposit: { ...plan.deposit, [me.id]: deposit },
+                ...(paidId && deposit ? { depositPayment: { ...(plan.depositPayment ?? {}), [me.id]: paidId } } : {}),
+                ...(paidId && bundle ? { bundle: { ...(plan.bundle ?? {}), [me.id]: { paid: bPrice, paymentId: paidId } } } : {}),
+                trustedContact: share ? settings.trustedContact?.name : undefined, checkInReminder: remind,
+              });
               confirmPlan(plan.id); setDone(true);
-            }}>{paying ? "Opening payment…" : deposit ? "Pay ₹99 and confirm" : "Confirm date"}</Button>
+            }}>{paying ? "Opening payment…" : total > 0 ? `Pay ₹${total} and confirm` : "Confirm date"}</Button>
           )}
           {stage === "review" && <button onClick={() => updatePlan(plan.id, { stage: "time" })} className="mt-1 min-h-11 w-full text-[14px] font-semibold text-muted">Change time</button>}
         </div>

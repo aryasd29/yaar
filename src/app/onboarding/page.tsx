@@ -4,7 +4,9 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import clsx from "clsx";
-import { Camera, Check, Shield } from "lucide-react";
+import { Camera, Check, EyeOff, Heart, Shield, Sparkles } from "lucide-react";
+import { Logo } from "@/components/Logo";
+import { Waves } from "@/components/Sea";
 import { Frame } from "@/components/Shell";
 import { Badge, Button, Card, Chip, Input, PrototypeTag, TopBar, Toggle } from "@/components/ui";
 import { Coco } from "@/components/Coco";
@@ -18,6 +20,38 @@ import { splitHotTake } from "@/lib/logic";
 
 const STEPS = ["Sign in", "Code", "Verify", "Basics", "Intent", "Privacy", "Moments", "Starter pack", "Voice", "This or That", "Battery", "Done"] as const;
 const AREAS = ["Koramangala", "Indiranagar", "HSR Layout", "Jayanagar", "Whitefield", "Malleshwaram", "BTM Layout", "Bellandur", "Frazer Town", "JP Nagar", "Hebbal", "Electronic City"];
+
+/** Phone sign-in needs an SMS provider (and DLT registration in India). Set NEXT_PUBLIC_PHONE_AUTH=1 once it is connected. */
+const PHONE_ON = process.env.NEXT_PUBLIC_PHONE_AUTH === "1";
+
+/** The first thing new people see: a warm sunset over the isle, and Coco saying hello. */
+function WelcomeScene({ returning }: { returning: boolean }) {
+  return (
+    <div className="relative h-[230px] overflow-hidden border-b-2 border-charcoal bg-[linear-gradient(180deg,#FFD3A8_0%,#FFA27F_60%,#FF8F6B_100%)] md:mx-5 md:rounded-[30px] md:border-2 lg:sticky lg:top-20 lg:mx-0 lg:h-[min(640px,calc(100dvh-120px))] lg:shadow-[0_6px_0_0_#1b2d45]">
+      <span className="absolute right-[14%] top-[34%] h-20 w-20 rounded-full bg-[#FFC94D] shadow-[0_0_50px_16px_rgba(255,201,77,0.45)] lg:right-[16%] lg:top-[12%] lg:h-32 lg:w-32" aria-hidden />
+      <svg viewBox="0 0 40 20" className="absolute left-[12%] top-[16%] w-8 opacity-70" aria-hidden><path d="M2 12 Q10 4 20 12 Q30 4 38 12" stroke="#1b2d45" strokeWidth="2.5" fill="none" strokeLinecap="round" /></svg>
+      <svg viewBox="0 0 40 20" className="absolute left-[22%] top-[9%] w-5 opacity-60" aria-hidden><path d="M2 12 Q10 4 20 12 Q30 4 38 12" stroke="#1b2d45" strokeWidth="2.5" fill="none" strokeLinecap="round" /></svg>
+      <Waves height={64} className="lg:!h-[96px]" />
+      {/* little sandbank with Coco */}
+      <svg viewBox="0 0 200 40" className="absolute bottom-[30px] left-[4%] w-[46%] max-w-[230px] lg:bottom-[44px] lg:max-w-[340px]" aria-hidden><ellipse cx="100" cy="22" rx="94" ry="14" fill="#F3DDB8" stroke="#1b2d45" strokeWidth="2.5" /></svg>
+      <motion.div className="absolute bottom-[40px] left-[13%] origin-bottom lg:bottom-[58px] lg:scale-[1.7]" initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: "spring", damping: 12, delay: 0.1 }}>
+        <Coco mood={returning ? "cheering" : "excited"} size={104} />
+      </motion.div>
+      {/* a message in a bottle drifting by (laptops) */}
+      <svg viewBox="0 0 120 60" className="bob absolute bottom-[54px] right-[10%] hidden w-[120px] lg:block" aria-hidden>
+        <path d="M30 12 H70 Q84 12 89 24 H101 Q104 24 104 27 V35 Q104 38 101 38 H89 Q84 50 70 50 H30 Q12 50 12 31 Q12 12 30 12 Z" fill="#BDEBE2" stroke="#1b2d45" strokeWidth="3" />
+        <rect x="102" y="23" width="9" height="16" rx="3" fill="#C98D5B" stroke="#1b2d45" strokeWidth="2.5" />
+        <rect x="26" y="22" width="50" height="18" rx="9" fill="#FFF9F0" stroke="#1b2d45" strokeWidth="2" /><path d="M51 22 V40" stroke="#FF7A5C" strokeWidth="3" />
+      </svg>
+      {/* speech bubble */}
+      <motion.div className="absolute left-[44%] top-[16%] max-w-[52%] rounded-[20px] lg:left-[42%] lg:top-auto lg:bottom-[300px] lg:max-w-[52%] lg:px-5 lg:py-4 rounded-bl-[6px] border-2 border-charcoal bg-paper px-3.5 py-2.5 shadow-[0_3px_0_0_#1b2d45]"
+        initial={{ scale: 0.6, opacity: 0, originX: 0, originY: 1 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", damping: 14, delay: 0.45 }}>
+        <p className="font-hand text-[21px] leading-[1.05] lg:text-[30px]">{returning ? "you're back! I missed you" : "hi, I'm Coco!"}</p>
+        <p className="mt-0.5 text-[12.5px] font-medium leading-snug text-charcoal/80 lg:text-[15px]">{returning ? "Let's see what the tide brought." : "I'll keep you company while you settle in."}</p>
+      </motion.div>
+    </div>
+  );
+}
 
 export default function OnboardingPage() {
   return <Suspense><Onboarding /></Suspense>;
@@ -142,36 +176,55 @@ function Onboarding() {
   };
 
   const pct = Math.round((step / (STEPS.length - 1)) * 100);
+  const returning = LIVE ? authMode === "signin" : params.get("mode") === "login";
 
   return (
-    <Frame bare>
+    <Frame bare width={step === 0 ? "wide" : undefined}>
       <TopBar back={step > 0 && step < STEPS.length - 1 ? () => go(step === 2 && (method === "google" || LIVE) ? 0 : step - 1) : step === 0 ? "/" : undefined}
-        title={<span className="text-[15px] font-semibold text-muted">{params.get("mode") === "login" && step < 2 ? "Welcome back" : STEPS[step]}</span>}
-        right={<span className="pr-2 text-[12.5px] font-semibold text-muted">{step + 1}/{STEPS.length}</span>} />
-      <div className="mx-5 h-2 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Onboarding progress">
-        <motion.div className="h-full rounded-full bg-coral" animate={{ width: `${Math.max(pct, 4)}%` }} transition={{ duration: 0.25 }} />
-      </div>
+        title={step === 0 ? <Logo size={24} /> : <span className="text-[15px] font-semibold text-muted">{params.get("mode") === "login" && step < 2 ? "Welcome back" : STEPS[step]}</span>}
+        right={step === 0 ? undefined : <span className="pr-2 text-[12.5px] font-semibold text-muted">{step + 1}/{STEPS.length}</span>} />
+      {step > 0 && (
+        <div className="mx-5 h-2 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Onboarding progress">
+          <motion.div className="h-full rounded-full bg-coral" animate={{ width: `${Math.max(pct, 4)}%` }} transition={{ duration: 0.25 }} />
+        </div>
+      )}
 
       <AnimatePresence mode="wait" custom={dir}>
         <motion.main key={step} custom={dir} initial={{ x: dir * 24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: dir * -24, opacity: 0 }} transition={{ duration: 0.2 }} className="px-5 pb-6 pt-6">
           {step === 0 && (
-            <section>
-              <Coco mood="excited" size={84} />
-              <h1 className="mt-3 text-[28px] leading-tight">{authMode === "signin" && LIVE ? "Welcome back!" : "Hi! Let's get you in."}</h1>
-              <p className="mt-1.5 text-muted">{LIVE ? "Use your email or your phone number. We never post anything anywhere." : "Use your phone number or Google. We never post anything anywhere."}</p>
-              <p className="mt-1 text-[12.5px] text-muted">By continuing you agree to our <a href="/terms" className="underline">Terms</a>, <a href="/privacy" className="underline">Privacy policy</a> and <a href="/guidelines" className="underline">Community guidelines</a>. 18+ only.</p>
-              {LIVE && (
-                <div role="tablist" aria-label="Sign-in method" className="mt-5 grid grid-cols-2 rounded-full border-2 border-charcoal bg-paper p-1">
-                  {(["email", "phone"] as const).map((m) => (
-                    <button key={m} role="tab" aria-selected={method === m} onClick={() => { setMethod(m); setErr(null); }} className={`min-h-11 rounded-full text-[14px] font-bold capitalize ${method === m ? "bg-charcoal text-paper" : "text-muted"}`}>{m}</button>
+            <section className="-mx-5 -mt-6 lg:mx-0 lg:mt-2 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start lg:gap-12">
+              <WelcomeScene returning={returning} />
+              <div className="px-5 pt-6 lg:px-0 lg:pt-4">
+              <h1 className="text-[31px] leading-[1.1] lg:text-[44px]">{returning ? "Welcome back to the isle" : "Welcome to the isle"}</h1>
+              <p className="mt-2 text-[15.5px] leading-relaxed text-muted">{returning
+                ? "Coco kept your spot warm. Sign in and the tide will catch you up."
+                : "Make an account, then we'll build your scrapbook together. Nobody sees a thing until you're ready."}</p>
+              {!returning && (
+                <ul className="mt-4 grid grid-cols-3 gap-2" aria-label="Our promises">
+                  {([[<Heart key="h" size={18} />, "First names only", "bg-coral-soft text-coral-ink"], [<EyeOff key="e" size={18} />, "Hidden from colleagues", "bg-peri-soft text-peri-ink"], [<Sparkles key="s" size={18} />, "Leave anytime, no strings", "bg-sage-soft text-sage-ink"]] as const).map(([icon, text, tone]) => (
+                    <li key={text} className={`flex flex-col items-center gap-1.5 rounded-[18px] px-2 py-3 text-center text-[12.5px] font-semibold leading-tight ${tone}`}>{icon}{text}</li>
                   ))}
+                </ul>
+              )}
+              <div className="mt-5 rounded-[26px] border-2 border-charcoal bg-paper p-4 shadow-[0_4px_0_0_#1b2d45]">
+              {LIVE && (
+                <div role="tablist" aria-label="Sign-in method" className="grid grid-cols-2 rounded-full bg-vanilla p-1">
+                  {(["email", "phone"] as const).map((m) => {
+                    const soon = m === "phone" && !PHONE_ON;
+                    return (
+                      <button key={m} role="tab" aria-selected={method === m} aria-disabled={soon} onClick={() => { if (soon) { setNotice("Phone sign-in is coming soon. Texting codes in India needs an SMS provider and DLT registration, so for now please use email."); return; } setMethod(m); setErr(null); }}
+                        className={`min-h-11 rounded-full text-[14px] font-bold capitalize transition ${method === m ? "bg-charcoal text-paper" : soon ? "text-muted/60" : "text-muted"}`}>
+                        {m}{soon && <span className="ml-1.5 rounded-full bg-butter-soft px-1.5 py-0.5 text-[10.5px] font-bold normal-case text-butter-ink">soon</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
-              <div className="mt-5 space-y-3">
+              <div className="mt-4 space-y-3">
                 {LIVE && method === "email" ? (
                   <>
-                    <Input label="Email" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(null); }} placeholder="you@example.com" />
-                    <Input label="Password" type="password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} value={password} onChange={(e) => { setPassword(e.target.value); setErr(null); }} hint={authMode === "signup" ? "At least 6 characters." : undefined} />
+                    <Input label="Your email" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(null); }} placeholder="you@example.com" />
+                    <Input label={authMode === "signup" ? "Choose a password" : "Your password"} type="password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} value={password} onChange={(e) => { setPassword(e.target.value); setErr(null); }} hint={authMode === "signup" ? "At least 6 characters." : undefined} />
                     <p className="text-[14px] text-muted">
                       {authMode === "signup" ? "Already have an account? " : "New to Isle? "}
                       <button className="min-h-11 font-semibold text-charcoal underline underline-offset-2" onClick={() => { setAuthMode(authMode === "signup" ? "signin" : "signup"); setErr(null); setNotice(null); }}>{authMode === "signup" ? "Sign in" : "Create an account"}</button>
@@ -205,6 +258,12 @@ function Onboarding() {
                     </Button>
                   </>
                 )}
+              </div>
+              {err && <p role="alert" className="mt-3 rounded-xl bg-coral-soft px-3 py-2 text-[13.5px] font-medium text-coral-ink">{err}</p>}
+              <Button full className="mt-4" onClick={next} disabled={busy}>{busy ? "One moment…" : LIVE && method === "email" ? (returning ? "Sign in" : "Create my account") : "Send code"}</Button>
+              {!returning && <p className="mt-2 text-center text-[12.5px] font-medium text-muted">Takes about three minutes. You can finish your scrapbook later.</p>}
+              </div>
+              <p className="mt-4 text-center text-[12.5px] leading-relaxed text-muted">By continuing you agree to our <a href="/terms" className="underline">Terms</a>, <a href="/privacy" className="underline">Privacy policy</a> and <a href="/guidelines" className="underline">Community guidelines</a>. Isle is for people 18 and over.</p>
               </div>
             </section>
           )}
@@ -360,13 +419,12 @@ function Onboarding() {
         </motion.main>
       </AnimatePresence>
 
-      <div className="sticky bottom-0 z-20 bg-gradient-to-t from-vanilla via-vanilla to-vanilla/0 px-5 pb-6 pt-8">
+      {step > 0 && <div className="sticky bottom-0 z-20 bg-gradient-to-t from-vanilla via-vanilla to-vanilla/0 px-5 pb-6 pt-8">
         {err && <p role="alert" className="mb-2 rounded-xl bg-coral-soft px-3 py-2 text-[13.5px] font-medium text-coral-ink">{err}</p>}
         {step === 11 ? <Button full onClick={finish}>Go to the shore</Button>
           : step === 8 && !voice ? (<div className="flex gap-2"><Button variant="ghost" className="flex-1" onClick={() => go(9)}>Skip for now</Button><Button className="flex-1" onClick={next}>Continue</Button></div>)
-          : step === 0 ? <Button full onClick={next} disabled={busy}>{busy ? "One moment…" : LIVE && method === "email" ? (authMode === "signup" ? "Create account" : "Sign in") : "Send code"}</Button>
           : <Button full onClick={next} disabled={busy}>{busy ? "One moment…" : "Continue"}</Button>}
-      </div>
+      </div>}
     </Frame>
   );
 }

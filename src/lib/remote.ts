@@ -11,7 +11,7 @@
  * the database.
  */
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
-import type { DatePlan, Match, Message, Prefs, Profile, Reaction, ReactTarget, Settings } from "./types";
+import type { DatePlan, Match, Message, PlusState, Prefs, Profile, Reaction, ReactTarget, Settings } from "./types";
 import { useYaar } from "./store";
 
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -256,7 +256,7 @@ async function uploadMedia() {
 }
 
 /* ---------------- funnel events (north-star: verified first dates) ---------------- */
-export type FunnelEvent = "signup_completed" | "reaction_sent" | "match_created" | "first_message" | "date_confirmed" | "date_attended" | "feedback_given";
+export type FunnelEvent = "signup_completed" | "reaction_sent" | "match_created" | "first_message" | "date_confirmed" | "date_attended" | "feedback_given" | "plus_started" | "seat_booked" | "bundle_bought";
 export function track(name: FunnelEvent, props?: Record<string, unknown>) {
   const me = myId();
   if (!supa || !me || isSample(me)) return;
@@ -274,7 +274,7 @@ export function pushProfile(immediate = false) {
     if (!s.me || isSample(s.me.id)) return;
     const { error } = await supa!.from("profiles").upsert({ id: s.me.id, data: publicData(s.me), updated_at: new Date().toISOString() });
     warn("save your profile", error);
-    const { error: e2 } = await supa!.from("private_details").upsert({ id: s.me.id, data: { work: s.me.work ?? null, college: s.me.college ?? null, prefs: s.prefs, settings: s.settings } });
+    const { error: e2 } = await supa!.from("private_details").upsert({ id: s.me.id, data: { work: s.me.work ?? null, college: s.me.college ?? null, prefs: s.prefs, settings: s.settings, plus: s.plus } });
     warn("save your private details", e2);
   };
   if (immediate) return run();
@@ -308,6 +308,22 @@ export async function sendMessage(m: Message) {
   if (m.kind === "text" && mine.length === 0) track("first_message");
   const { error } = await supa.from("messages").insert({ id: m.id, match_id: m.matchId, from_id: m.from === "yaar" ? null : m.from, body: m.body, kind: m.kind, meta: m.meta ?? null, created_at: iso(m.createdAt) });
   if (error) { useYaar.setState((s) => ({ messages: s.messages.filter((x) => x.id !== m.id) })); warn("send that message", error); }
+}
+
+/** Resets a match's quiet-days clock (Spark again, Freeze my matches). */
+export async function touchMatch(matchId: string) {
+  if (!supa) return;
+  await supa.from("matches").update({ last_activity_at: new Date().toISOString(), status: "active" }).eq("id", matchId);
+}
+
+/** Undo "Not for me" (Rewind). */
+export async function unpass(id: string) {
+  const me = myId();
+  if (!supa || !me) return;
+  await Promise.all([
+    supa.from("passes").delete().eq("user_id", me).eq("passed", id),
+    supa.from("reactions").update({ status: "pending" }).eq("from_id", id).eq("to_id", me).eq("status", "passed"),
+  ]);
 }
 
 export async function endMatch(matchId: string, reason: string) {
@@ -397,11 +413,12 @@ export async function loadAccount(userId: string): Promise<"loaded" | "new"> {
     supa.from("private_details").select("*").eq("id", userId).maybeSingle(),
   ]);
   if (!prof) return "new";
-  const pd = (priv?.data ?? {}) as { work?: string | null; college?: string | null; prefs?: Prefs; settings?: Settings };
+  const pd = (priv?.data ?? {}) as { work?: string | null; college?: string | null; prefs?: Prefs; settings?: Settings; plus?: PlusState | null };
   const me: Profile = { ...toProfile(prof as ProfileRow), work: pd.work ?? undefined, college: pd.college ?? undefined };
   const st = useYaar.getState();
   st.completeOnboarding(me, pd.prefs ?? st.prefs, { fromServer: true });
   if (pd.settings) st.setSettings(pd.settings);
+  if (pd.plus) useYaar.setState({ plus: pd.plus });
   await loadEverything();
   startLive();
   return "loaded";

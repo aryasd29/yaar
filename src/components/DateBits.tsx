@@ -44,6 +44,7 @@ export function DateCard({ planId, compact }: { planId: string; compact?: boolea
         {venue && <p className="flex items-center gap-1.5 text-[14px] text-muted"><MapPin size={15} /> {venue.name}, {venue.area}</p>}
         <p className="flex items-center gap-1.5 text-[14px] text-muted"><Clock size={15} /> {fmtSlot(plan.slot)}</p>
         {venue?.perk && !compact && <p className="text-[13.5px] font-semibold text-sage-ink">Isle perk: {venue.perk}</p>}
+        {!compact && plan.bundle && Object.keys(plan.bundle).length > 0 && <p className="text-[13.5px] font-semibold text-butter-ink">☕ Coffee and dessert for two, prepaid. Show code ISLE-{plan.id.slice(-4).toUpperCase()} at the counter.</p>}
       </div>
     </div>
   );
