@@ -36,13 +36,15 @@ export function EventImage({ t, className, credit = false }: { t: TableEvent; cl
 
 export function EventCard({ t, now, going, compact = false }: { t: TableEvent; now: number; going: boolean; compact?: boolean }) {
   const full = t.left === 0 && !going;
-  const left = going ? Math.max(0, t.left - 1) : t.left;
+  const left = t.live || !going ? t.left : Math.max(0, t.left - 1);
   return (
     <Link href={`/explore/tables/${t.id}`} className={clsx("group flex flex-col overflow-hidden rounded-[22px] border-2 border-charcoal bg-paper shadow-[0_4px_0_0_#1b2d45] transition hover:-translate-y-0.5 active:translate-y-[2px] active:shadow-[0_1px_0_0_#1b2d45]", compact && "w-[240px] shrink-0 lg:w-auto")}>
       <div className="relative">
         <EventImage t={t} className="aspect-[4/3] w-full" />
         <span className="absolute left-2 top-2 rounded-full border-2 border-charcoal bg-butter px-2 py-0.5 text-[11.5px] font-bold">{fmtPrice(t.price)}</span>
-        {going && <span className="absolute right-2 top-2 rounded-full border-2 border-charcoal bg-sage px-2 py-0.5 text-[11.5px] font-bold">In your plans</span>}
+        {t.cancelled ? <span className="absolute right-2 top-2 rounded-full border-2 border-charcoal bg-coral-soft px-2 py-0.5 text-[11.5px] font-bold">Cancelled</span>
+          : t.hosting ? <span className="absolute right-2 top-2 rounded-full border-2 border-charcoal bg-peri px-2 py-0.5 text-[11.5px] font-bold">You&apos;re hosting</span>
+          : going && <span className="absolute right-2 top-2 rounded-full border-2 border-charcoal bg-sage px-2 py-0.5 text-[11.5px] font-bold">You&apos;re going</span>}
         {full && <span className="absolute right-2 top-2 rounded-full border-2 border-charcoal bg-paper px-2 py-0.5 text-[11.5px] font-bold">Full</span>}
       </div>
       <div className="flex flex-1 flex-col p-3">
@@ -52,7 +54,7 @@ export function EventCard({ t, now, going, compact = false }: { t: TableEvent; n
           <span className="inline-flex items-center gap-1"><MapPin size={12} /> {t.area}</span>
           <span className="inline-flex items-center gap-1"><Users size={12} /> {full ? "No seats left" : `${left} of ${t.seats} left`}</span>
         </span>
-        <span className="mt-2"><Badge tone="peri">Sample event</Badge></span>
+        {t.live ? (t.hostName && <span className="mt-1.5 text-[12px] text-muted">Hosted by {t.hosting ? "you" : t.hostName}</span>) : <span className="mt-2"><Badge tone="peri">Sample event</Badge></span>}
       </div>
     </Link>
   );

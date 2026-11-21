@@ -25,7 +25,7 @@ export const newId = () => (typeof crypto !== "undefined" && "randomUUID" in cry
 /* ---------------- shapes ---------------- */
 type ProfileRow = { id: string; data: Omit<Profile, "id">; updated_at: string };
 type ReactionRow = { id: string; from_id: string; to_id: string; target: ReactTarget; note: string; status: Reaction["status"]; created_at: string };
-type MatchRow = { id: string; user_a: string; user_b: string; created_at: string; last_activity_at: string; status: Match["status"]; ended_by: string | null; end_reason: string | null };
+type MatchRow = { id: string; user_a: string; user_b: string; created_at: string; last_activity_at: string; status: Match["status"]; ended_by: string | null; end_reason: string | null; frozen_until?: string | null };
 type MessageRow = { id: string; match_id: string; from_id: string | null; body: string; kind: Message["kind"]; meta: Record<string, unknown> | null; created_at: string };
 type PlanRow = { id: string; match_id: string; data: Omit<DatePlan, "id" | "matchId">; updated_at: string };
 
@@ -41,7 +41,7 @@ const toProfile = (r: ProfileRow): Profile => ({ ...r.data, id: r.id });
 const toReaction = (r: ReactionRow): Reaction => ({ id: r.id, from: r.from_id, to: r.to_id, target: r.target, note: r.note, status: r.status, createdAt: ts(r.created_at) });
 const toMatch = (r: MatchRow, me: string): Match => ({
   id: r.id, users: [me, r.user_a === me ? r.user_b : r.user_a], createdAt: ts(r.created_at), lastActivityAt: ts(r.last_activity_at),
-  status: r.status, endedBy: r.ended_by ?? undefined, endReason: r.end_reason ?? undefined,
+  status: r.status, endedBy: r.ended_by ?? undefined, endReason: r.end_reason ?? undefined, frozenUntil: r.frozen_until ? ts(r.frozen_until) : undefined,
 });
 const toMessage = (r: MessageRow): Message => ({ id: r.id, matchId: r.match_id, from: r.from_id ?? "yaar", body: r.body, kind: r.kind, createdAt: ts(r.created_at), meta: r.meta ?? undefined });
 const toPlan = (r: PlanRow): DatePlan => ({ ...r.data, id: r.id, matchId: r.match_id });
@@ -150,6 +150,7 @@ export async function loadEverything() {
     }
   }
   injectRealIntoDrop();
+  void import("./live").then((l) => l.loadCommerce());
 }
 
 /* ---------------- shared date plans ---------------- */
@@ -256,7 +257,7 @@ async function uploadMedia() {
 }
 
 /* ---------------- funnel events (north-star: verified first dates) ---------------- */
-export type FunnelEvent = "signup_completed" | "reaction_sent" | "match_created" | "first_message" | "date_confirmed" | "date_attended" | "feedback_given" | "plus_started" | "seat_booked" | "bundle_bought";
+export type FunnelEvent = "signup_completed" | "reaction_sent" | "match_created" | "first_message" | "date_confirmed" | "date_attended" | "feedback_given" | "plus_started" | "seat_booked" | "bundle_bought" | "table_hosted" | "verified";
 export function track(name: FunnelEvent, props?: Record<string, unknown>) {
   const me = myId();
   if (!supa || !me || isSample(me)) return;
@@ -274,7 +275,7 @@ export function pushProfile(immediate = false) {
     if (!s.me || isSample(s.me.id)) return;
     const { error } = await supa!.from("profiles").upsert({ id: s.me.id, data: publicData(s.me), updated_at: new Date().toISOString() });
     warn("save your profile", error);
-    const { error: e2 } = await supa!.from("private_details").upsert({ id: s.me.id, data: { work: s.me.work ?? null, college: s.me.college ?? null, prefs: s.prefs, settings: s.settings, plus: s.plus } });
+    const { error: e2 } = await supa!.from("private_details").upsert({ id: s.me.id, data: { work: s.me.work ?? null, college: s.me.college ?? null, prefs: s.prefs, settings: s.settings } });
     warn("save your private details", e2);
   };
   if (immediate) return run();
@@ -308,6 +309,7 @@ export async function sendMessage(m: Message) {
   if (m.kind === "text" && mine.length === 0) track("first_message");
   const { error } = await supa.from("messages").insert({ id: m.id, match_id: m.matchId, from_id: m.from === "yaar" ? null : m.from, body: m.body, kind: m.kind, meta: m.meta ?? null, created_at: iso(m.createdAt) });
   if (error) { useYaar.setState((s) => ({ messages: s.messages.filter((x) => x.id !== m.id) })); warn("send that message", error); }
+  else if (m.from !== "yaar") void notify("message", m.matchId);
 }
 
 /** Resets a match's quiet-days clock (Spark again, Freeze my matches). */
@@ -418,7 +420,7 @@ export async function loadAccount(userId: string): Promise<"loaded" | "new"> {
   const st = useYaar.getState();
   st.completeOnboarding(me, pd.prefs ?? st.prefs, { fromServer: true });
   if (pd.settings) st.setSettings(pd.settings);
-  if (pd.plus) useYaar.setState({ plus: pd.plus });
+  void import("./live").then((l) => l.loadCommerce());
   await loadEverything();
   startLive();
   return "loaded";
@@ -485,8 +487,8 @@ export async function amAdmin() {
   return !!data;
 }
 
-/* ---------------- email notifications (only if the server has email keys) ---------------- */
-export async function notify(type: "match" | "date", matchId: string) {
+/* ---------------- notifications: push and email (only if the server has the keys) ---------------- */
+export async function notify(type: "match" | "date" | "message", matchId: string) {
   if (!supa) return;
   const { data } = await supa.auth.getSession();
   const token = data.session?.access_token;
@@ -494,36 +496,22 @@ export async function notify(type: "match" | "date", matchId: string) {
   void fetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ type, matchId }) }).catch(() => {});
 }
 
-/* ---------------- the ₹99 show-up promise ---------------- */
+/* ---------------- server calls ---------------- */
 type RazorpayResponse = { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string };
 declare global { interface Window { Razorpay?: new (opts: Record<string, unknown>) => { open: () => void; on: (e: string, cb: () => void) => void } } }
+export type { RazorpayResponse };
 
-/**
- * Takes the ₹99 deposit. With Razorpay keys on the server it opens Razorpay Checkout (use test keys:
- * no real money moves). Without keys it returns "demo" and the app records a test-mode deposit.
- */
-export async function payDeposit(planId: string, who: { name: string; email?: string }): Promise<{ status: "paid"; paymentId: string } | { status: "demo" } | { status: "cancelled" } | { status: "error"; error: string }> {
+/** POST to one of Isle's server routes as the signed-in member. */
+export async function api<T = Record<string, unknown>>(path: string, body: unknown): Promise<T & { error?: string }> {
+  if (!supa) return { error: "Not connected." } as T & { error?: string };
+  const { data } = await supa.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) return { error: "Please sign in again." } as T & { error?: string };
   try {
-    const r = await fetch("/api/deposit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "order", planId }) });
-    const j = await r.json();
-    if (j.mode === "demo") return { status: "demo" };
-    if (!r.ok) return { status: "error", error: j.error ?? "Couldn't start the payment." };
-    if (!window.Razorpay) {
-      await new Promise<void>((res, rej) => { const sc = document.createElement("script"); sc.src = "https://checkout.razorpay.com/v1/checkout.js"; sc.onload = () => res(); sc.onerror = () => rej(new Error("load")); document.body.appendChild(sc); });
-    }
-    return await new Promise((resolve) => {
-      const rz = new window.Razorpay!({
-        key: j.keyId, order_id: j.orderId, amount: j.amount, currency: "INR", name: "Isle", description: "Show-up promise (refunded when you both turn up)",
-        prefill: { name: who.name, email: who.email }, theme: { color: "#FF7A5C" },
-        handler: async (resp: RazorpayResponse) => {
-          const v = await fetch("/api/deposit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "verify", orderId: resp.razorpay_order_id, paymentId: resp.razorpay_payment_id, signature: resp.razorpay_signature }) }).then((x) => x.json());
-          resolve(v.ok ? { status: "paid", paymentId: resp.razorpay_payment_id } : { status: "error", error: "We couldn't confirm that payment." });
-        },
-        modal: { ondismiss: () => resolve({ status: "cancelled" }) },
-      });
-      rz.open();
-    });
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    return (r.ok ? j : { ...j, error: j.error ?? "Something went wrong. Please try again." }) as T & { error?: string };
   } catch {
-    return { status: "error", error: "Couldn't reach the payment service. Check your connection." };
+    return { error: "Couldn't reach Isle. Check your connection." } as T & { error?: string };
   }
 }

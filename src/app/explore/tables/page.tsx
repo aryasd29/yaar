@@ -1,11 +1,12 @@
 "use client";
 import { useMemo, useState } from "react";
-import { SlidersHorizontal } from "lucide-react";
+import { Plus, SlidersHorizontal } from "lucide-react";
 import { Frame } from "@/components/Shell";
 import { EventCard } from "@/components/EventCard";
 import { Button, Chip, EmptyState, PrototypeTag, Toggle, TopBar } from "@/components/ui";
 import { useYaar } from "@/lib/store";
-import { DEMO_TABLES, TABLE_AREAS, TABLE_CATEGORIES, tableDate } from "@/lib/seed";
+import { TABLE_AREAS, TABLE_CATEGORIES, tableDate } from "@/lib/seed";
+import { useTables } from "@/lib/useTables";
 
 type When = "any" | "today" | "weekend" | "week";
 type Price = "any" | "free" | "under300";
@@ -13,7 +14,8 @@ const WHEN: [When, string][] = [["any", "Any day"], ["today", "Today"], ["weeken
 const PRICE: [Price, string][] = [["any", "Any price"], ["free", "Free"], ["under300", "Under ₹300"]];
 
 export default function Tables() {
-  const { joinedTables, now } = useYaar();
+  const { now } = useYaar();
+  const { tables, isGoing, loaded, live } = useTables();
   const t = now();
   const [when, setWhen] = useState<When>("any");
   const [cat, setCat] = useState<string>("all");
@@ -24,7 +26,7 @@ export default function Tables() {
 
   const list = useMemo(() => {
     const today = new Date(t); today.setHours(0, 0, 0, 0);
-    return DEMO_TABLES.filter((x) => {
+    return tables.filter((x) => {
       const d = tableDate(x, t);
       const days = Math.floor((d.getTime() - today.getTime()) / 86_400_000);
       if (when === "today" && days !== 0) return false;
@@ -34,10 +36,11 @@ export default function Tables() {
       if (area !== "all" && x.area !== area) return false;
       if (price === "free" && x.price !== 0) return false;
       if (price === "under300" && x.price >= 300) return false;
-      if (seats && x.left === 0 && !joinedTables.includes(x.id)) return false;
+      if (seats && x.left === 0 && !isGoing(x)) return false;
       return true;
     }).sort((a, b) => tableDate(a, t).getTime() - tableDate(b, t).getTime());
-  }, [t, when, cat, area, price, seats, joinedTables]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t, when, cat, area, price, seats, tables]);
 
   const active = (when !== "any" ? 1 : 0) + (cat !== "all" ? 1 : 0) + (area !== "all" ? 1 : 0) + (price !== "any" ? 1 : 0) + (seats ? 1 : 0);
   const reset = () => { setWhen("any"); setCat("all"); setArea("all"); setPrice("any"); setSeats(false); };
@@ -45,9 +48,9 @@ export default function Tables() {
 
   return (
     <Frame width="wide">
-      <TopBar back="/explore" title="Tables" sub="Small meetups of 4 to 8 verified people" />
+      <TopBar back="/explore" title="Tables" sub="Small meetups hosted by selfie-checked members" right={live ? <Button href="/explore/tables/new" className="!min-h-10 !px-3"><Plus size={16} /> Host</Button> : undefined} />
       <main className="px-5 pb-12 md:px-8 lg:px-10">
-        <PrototypeTag>Sample events. Dates move with today so the demo always has something on.</PrototypeTag>
+        {!live && <PrototypeTag>Sample events. Dates move with today so the demo always has something on.</PrototypeTag>}
         <div className="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="When">
           {WHEN.map(([k, l]) => <Chip key={k} active={when === k} onClick={() => setWhen(k)}>{l}</Chip>)}
           <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="more-filters" className="ml-auto flex min-h-11 items-center gap-1.5 rounded-full border-2 border-charcoal bg-paper px-3.5 text-[14px] font-bold">
@@ -66,10 +69,14 @@ export default function Tables() {
           <p className="text-[14px] font-semibold">{list.length} {list.length === 1 ? "Table" : "Tables"}</p>
           {active > 0 && <button onClick={reset} className="min-h-11 text-[13.5px] font-bold text-coral-ink underline underline-offset-2">Clear filters</button>}
         </div>
-        {list.length === 0 ? (
+        {!loaded ? (
+          <p className="mt-6 text-center text-muted">Loading Tables…</p>
+        ) : tables.length === 0 ? (
+          <EmptyState mood="excited" title="No Tables yet" body="Be the first: host a small, friendly meetup. Board games, a walk, a dosa breakfast. Anything that's easy to say yes to." action={<Button href="/explore/tables/new"><Plus size={17} /> Host a Table</Button>} />
+        ) : list.length === 0 ? (
           <EmptyState mood="thinking" title="No Tables match" body="Try another day or area, or clear the filters." action={<Button variant="secondary" onClick={reset}>Clear filters</Button>} />
         ) : (
-          <div className="mt-2 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{list.map((x) => <EventCard key={x.id} t={x} now={t} going={joinedTables.includes(x.id)} />)}</div>
+          <div className="mt-2 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{list.map((x) => <EventCard key={x.id} t={x} now={t} going={isGoing(x)} />)}</div>
         )}
       </main>
     </Frame>

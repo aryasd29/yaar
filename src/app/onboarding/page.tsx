@@ -154,7 +154,7 @@ function Onboarding() {
         if (method === "email") { if (!/^\S+@\S+\.\S+$/.test(email.trim())) return "Enter a valid email address."; return password.length < 6 ? "Use a password with at least 6 characters." : null; }
         return method === "phone" && !/^[6-9]\d{9}$/.test(phone.replace(/\s/g, "")) ? "Enter a valid 10-digit Indian mobile number." : null;
       case 1: return LIVE ? (otp.length !== 6 ? "Enter the 6-digit code from the text message." : null) : otp !== "123456" ? "That code doesn't match. In this prototype the code is 123456." : null;
-      case 2: if (!dob) return "Add your date of birth."; if (age < 18) return "Isle is for people aged 18 and over."; if (age > 100) return "Check your date of birth."; return !verified ? "Complete the selfie check to continue." : null;
+      case 2: if (!dob) return "Add your date of birth."; if (age < 18) return "Isle is for people aged 18 and over."; if (age > 100) return "Check your date of birth."; return !LIVE && !verified ? "Complete the selfie check to continue." : null;
       case 3: if (name.trim().length < 2) return "Add your first name."; if (!gender) return "Choose how you identify."; return !area ? "Pick your area so we can suggest people nearby." : null;
       case 4: return !intent ? "Choose what you're looking for. You can change it anytime." : null;
       case 6: return moments.length < 3 ? "Add at least 3 moments." : moments.some((m) => !m.caption.trim()) ? "Give every moment a short caption." : null;
@@ -166,7 +166,7 @@ function Onboarding() {
 
   const finish = () => {
     const profile: Profile = {
-      id: userId ?? "me", name: name.trim(), age, gender: gender as Gender, pronouns: pronouns || undefined, area, verified: true, intent: intent as Intent,
+      id: userId ?? "me", name: name.trim(), age, gender: gender as Gender, pronouns: pronouns || undefined, area, verified: !LIVE, intent: intent as Intent,
       moments, starterPack: starter, hotTake: splitHotTake({ hotTake, hotTakePrompt: hotPrompt }).answer, hotTakePrompt: hotPrompt, voice: voice ?? undefined, thisOrThat: tot, interests,
       work: work || undefined, college: college || undefined, battery,
     };
@@ -282,10 +282,10 @@ function Onboarding() {
 
           {step === 2 && (
             <section>
-              <h1 className="text-[28px] leading-tight">Quick check that you&apos;re you</h1>
-              <p className="mt-1.5 text-muted">Everyone on Isle passes the same check. Your selfie is never shown on your profile.</p>
+              <h1 className="text-[28px] leading-tight">{LIVE ? "First, your birthday" : "Quick check that you\u2019re you"}</h1>
+              <p className="mt-1.5 text-muted">{LIVE ? "Isle is for adults only. Once you've added photos, you can take the selfie check for your Selfie-checked badge." : "Everyone on Isle passes the same check. Your selfie is never shown on your profile."}</p>
               <div className="mt-5"><Input label="Date of birth" type="date" value={dob} onChange={(e) => { setDob(e.target.value); setErr(null); }} max={new Date().toISOString().slice(0, 10)} hint={age ? `You're ${age}.` : "You must be 18 or over."} /></div>
-              <SelfieCheck done={verified} onDone={() => setVerified(true)} />
+              {!LIVE && <SelfieCheck done={verified} onDone={() => setVerified(true)} />}
               <p className="mt-3 text-[12.5px] leading-relaxed text-muted"><Shield size={13} className="mr-1 inline" />A Verified badge means someone passed this check. It isn&apos;t a promise about their character, so always use the safety tools.</p>
             </section>
           )}
@@ -414,6 +414,7 @@ function Onboarding() {
               <h1 className="mt-4 text-[30px]">Your scrapbook is ready, {name || "friend"}!</h1>
               <p className="mt-2 text-muted">Your first tide is coming in. Open each message in a bottle one at a time, and react to whatever makes you smile.</p>
               <div className="mt-6 w-full max-w-[260px]">{moments[0] && <Moment m={moments[0]} i={1} />}</div>
+              {LIVE && <p className="mt-5 max-w-[360px] rounded-[16px] bg-sage-soft px-4 py-3 text-[14px] text-sage-ink">Next, take the one-minute selfie check from your profile to get your <b>Selfie-checked</b> badge. People reply more to checked profiles.</p>}
             </section>
           )}
         </motion.main>

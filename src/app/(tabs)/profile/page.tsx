@@ -1,7 +1,7 @@
 "use client";
 import { PlusLock, PlusTag } from "@/components/PlusBits";
 import { isPlus, scrapbookReview } from "@/lib/plus";
-import { amAdmin } from "@/lib/remote";
+import { LIVE, amAdmin } from "@/lib/remote";
 import { DeleteAccount } from "@/components/DeleteAccount";
 import { NotificationBell } from "@/components/PageHeader";
 import Link from "next/link";
@@ -69,7 +69,7 @@ export default function MyProfile() {
                 {me.pronouns && <span>{me.pronouns}</span>}
               </p>
               <div className="mt-2.5 flex flex-wrap justify-center gap-1.5 md:justify-start">
-                {me.verified && <Badge><span title="Passed the selfie check at sign-up. In this version the check is simulated; production would use a verification provider.">✓ Selfie-checked</span></Badge>}
+                {me.verified && <Badge><span title="Passed Isle’s automatic selfie check: a live camera check matched to their scrapbook photos. It isn’t a promise about character, so keep using the safety tools.">✓ Selfie-checked</span></Badge>}
                 {me.reliable && <Badge tone="peri">Reliable</Badge>}
                 <Badge tone="coral">{INTENT_LABEL[me.intent]}</Badge>
               </div>
@@ -83,6 +83,13 @@ export default function MyProfile() {
           </section>
 
           <Completion me={me} c={completion} />
+          {LIVE && !me.verified && (
+            <Link href="/verify" className="mt-4 flex items-center gap-3 rounded-[20px] bg-sage-soft p-3.5 text-sage-ink shadow-soft">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-sage text-charcoal"><ShieldCheck size={20} /></span>
+              <span className="flex-1"><span className="block font-semibold text-charcoal">Get your Selfie-checked badge</span><span className="block text-[13px]">One minute with your camera. Needed to host Tables.</span></span>
+              <ChevronRight size={18} />
+            </Link>
+          )}
           <CocoReview />
 
           {/* Private to you */}

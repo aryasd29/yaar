@@ -18,7 +18,7 @@ export default function Terms() {
         <p>Follow our <Link href="/guidelines" className="underline">Community guidelines</Link>. In short: be honest, be kind, respect a no, and never ask for money. We may suspend or remove accounts that break them, and we may share information with the police where the law requires it.</p></section>
       <section><h2>Meeting in person</h2>
         <ul><li>Isle suggests public venues and offers safety tools (trusted-contact check-ins, reporting, blocking). We can&apos;t guarantee anyone&apos;s behaviour, so always use your own judgement.</li>
-          <li>The selfie check at sign-up is simulated in this version of Isle. Don&apos;t treat it as proof of identity.</li></ul></section>
+          <li>The Selfie-checked badge means someone passed an automatic camera check that compares them with their own photos. It runs on their device, so it isn&apos;t proof of identity. Isle&apos;s team spot-checks selfies and can remove the badge.</li></ul></section>
       <section><h2>The ₹99 show-up promise</h2>
         <ul><li>It&apos;s optional, and both people must choose it.</li>
           <li>Both show up: both get a full refund. One person doesn&apos;t show: the person who came receives both deposits. Neither shows: both are refunded minus a small fee.</li>

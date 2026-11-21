@@ -2,12 +2,13 @@
 import { PlusLock, PlusTag } from "@/components/PlusBits";
 import { DIET, HABIT, LANGUAGES, filterCount, isPlus } from "@/lib/plus";
 import { DeleteAccount } from "@/components/DeleteAccount";
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import clsx from "clsx";
 import { Download, ShieldCheck, Trash2 } from "lucide-react";
 import { Frame, Loading, useRequireMe } from "@/components/Shell";
 import { Badge, Button, Card, Chip, EmptyState, Input, SectionLabel, Toggle, TopBar } from "@/components/ui";
 import { useYaar } from "@/lib/store";
+import { LIVE } from "@/lib/remote";
 import { yaarHourLabel } from "@/lib/config";
 import { BATTERY, INTENT_SHORT, LOCATION_LABEL, type Battery, type Intent, type Interest, type LocationVisibility } from "@/lib/types";
 
@@ -133,6 +134,7 @@ function Settings({ section }: { section: string }) {
           </div>
         )}
 
+        {section === "notifications" && <DevicePush />}
         {section === "notifications" && (
           <Card className="space-y-1">
             {([["yaarHour", "Tide", `Your daily bottles at ${yaarHourLabel()}`], ["reactions", "Reactions", "When someone reacts to your scrapbook"], ["messages", "Messages", "New chat messages"], ["dateReminders", "Date reminders", "The day before and an hour before"]] as const).map(([k, l, d]) => (
@@ -172,5 +174,30 @@ function Settings({ section }: { section: string }) {
         )}
       </main>
     </>
+  );
+}
+
+/** Push notifications on this phone or computer (live app, needs the server's VAPID keys). */
+function DevicePush() {
+  const toast = useYaar((s) => s.toast);
+  const [on, setOn] = useState<boolean | null>(null);
+  const [supported, setSupported] = useState(true);
+  useEffect(() => {
+    if (!LIVE) { setSupported(false); return; }
+    void import("@/lib/live").then(async (l) => { setSupported(l.pushSupported()); setOn(await l.pushEnabled()); });
+  }, []);
+  if (!LIVE) return null;
+  return (
+    <Card className="mb-3">
+      {supported ? (
+        <Toggle checked={!!on} onChange={async (v) => {
+          const l = await import("@/lib/live");
+          if (v) { const err = await l.enablePush(); if (err) return toast(err, "warn"); setOn(true); toast("Notifications are on for this device.", "good"); }
+          else { await l.disablePush(); setOn(false); toast("Notifications are off for this device.", "info"); }
+        }} label="Notifications on this device" description="Matches, messages and date updates, even when Isle is closed. Message text is never shown in a notification." />
+      ) : (
+        <p className="text-[13.5px] text-muted">Push notifications aren&apos;t available in this browser. On iPhone, add Isle to your Home Screen (Share, then Add to Home Screen) and open it from there.</p>
+      )}
+    </Card>
   );
 }

@@ -1,14 +1,17 @@
 "use client";
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import clsx from "clsx";
-import { motion } from "motion/react";
-import { QRCodeSVG } from "qrcode.react";
-import { Check, Clock, Flag, MapPin, Navigation, Phone, ScanLine, ShieldCheck, Users } from "lucide-react";
+import { Check, Clock, Copy, Flag, MapPin, Phone, ScanLine, Share2, ShieldCheck, Users } from "lucide-react";
 import { Frame, Loading, useRequireMe } from "@/components/Shell";
 import { Button, Card, EmptyState, PrototypeTag, SectionLabel, Sheet, Toggle, TopBar } from "@/components/ui";
 import { DateCard, usePlan } from "@/components/DateBits";
 import { Coco } from "@/components/Coco";
+import { CheckIn } from "@/components/CheckIn";
 import { useYaar } from "@/lib/store";
+import { LIVE, pushPlan } from "@/lib/remote";
+import type { DateExtras } from "@/lib/live";
+
+const L = () => import("@/lib/live");
 
 export default function DatePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -18,16 +21,43 @@ export default function DatePage({ params }: { params: Promise<{ id: string }> }
 function DateView({ planId }: { planId: string }) {
   const meReady = useRequireMe();
   const { plan, them, venue, me, match } = usePlan(planId);
-  const { checkIn, giveFeedback, cancelPlan, startPlan, toast } = useYaar();
+  const { giveFeedback, cancelPlan, startPlan, toast, settings } = useYaar();
   const [qr, setQr] = useState(false);
-  const [scanning, setScanning] = useState(false);
   const [cancel, setCancel] = useState(false);
   const [locShare, setLocShare] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [extras, setExtras] = useState<DateExtras | null>(null);
+
+  // Live app: deposits, bundles and check-ins come from the database; settle the promise once it's due.
+  const stage = plan?.stage;
+  useEffect(() => {
+    if (!LIVE || !plan) return;
+    let on = true;
+    void (async () => {
+      const l = await L();
+      setLocShare(l.sharingNow(plan.id));
+      const slotT = plan.slot ? +new Date(plan.slot) : 0;
+      if (stage === "checkedin" || stage === "done" || stage === "cancelled" || (slotT && Date.now() > slotT + 6 * 3_600_000)) {
+        const r = await l.settleDate(plan.id);
+        if (on && r.settled) toast("Your show-up promise has been settled.", "good");
+      }
+      const x = await l.dateExtras(plan.id);
+      if (on) setExtras(x);
+    })();
+    return () => { on = false; };
+  }, [plan?.id, stage]); // eslint-disable-line react-hooks/exhaustive-deps
   const [answer, setAnswer] = useState<"yes" | "maybe" | "no" | null>(null);
   const [comfort, setComfort] = useState<"comfortable" | "unsure" | "uncomfortable" | null>(null);
   if (!meReady || !me) return <Loading />;
   if (!plan || !them || !match) return <><TopBar back="/chats" /><EmptyState title="Date not found" /></>;
 
+  const cancelAndRefund = async () => {
+    cancelPlan(plan.id);
+    if (!LIVE) return;
+    const updated = useYaar.getState().plans.find((p) => p.id === plan.id);
+    if (updated) await pushPlan(updated);
+    await (await L()).settleDate(plan.id);
+  };
   const slot = plan.slot ? new Date(plan.slot) : null;
   const hoursAway = slot ? (+slot - Date.now()) / 3_600_000 : 99;
   const depositOn = plan.deposit[me.id];
@@ -54,22 +84,45 @@ function DateView({ planId }: { planId: string }) {
                 <Row icon={<Users size={18} />} title="Trusted contact" body={plan.trustedContact ? `${plan.trustedContact} has the place and time` : "Not shared. Add a contact in Safety settings."} />
                 <Row icon={<Clock size={18} />} title="Check-in" body={plan.checkInReminder ? "We'll ask 'all good?' 45 minutes in. Ignore it twice and your contact is alerted." : "Off"} />
                 <Row icon={<MapPin size={18} />} title="Venue" body={venue ? `${venue.name}, ${venue.address}` : "—"} />
-                <Toggle checked={locShare} onChange={(v) => { setLocShare(v); toast(v ? "Live location shared with your trusted contact for 3 hours." : "Location sharing stopped.", "info"); }} label="Share live location for 3 hours" description="Only with your trusted contact. Stops automatically." />
+                <Toggle checked={locShare} onChange={async (v) => {
+                  if (!LIVE) { setLocShare(v); toast(v ? "Live location shared with your trusted contact." : "Location sharing stopped.", "info"); return; }
+                  const l = await L();
+                  if (!v) { await l.stopLocationShare(plan.id); setLocShare(false); setShareUrl(null); return toast("Location sharing stopped.", "info"); }
+                  const r = await l.startLocationShare(plan.id);
+                  if (r.error) return toast(r.error, "warn");
+                  setLocShare(true); setShareUrl(r.url!);
+                }} label="Share live location for 6 hours" description="Through a private link you send to someone you trust. Stops automatically." />
+                {LIVE && locShare && shareUrl && (
+                  <div className="rounded-[14px] bg-sage-soft p-3 text-[13.5px] text-sage-ink">
+                    <p className="font-semibold">Send this link to {settings.trustedContact?.name ?? "someone you trust"}:</p>
+                    <p className="mt-1 break-all font-mono text-[12px]">{shareUrl}</p>
+                    <div className="mt-2 flex gap-2">
+                      <Button variant="secondary" className="!min-h-10 flex-1" onClick={() => { void navigator.clipboard?.writeText(shareUrl); toast("Link copied", "good"); }}><Copy size={15} /> Copy</Button>
+                      <Button className="!min-h-10 flex-1" href={`https://wa.me/${settings.trustedContact?.phone ? `91${settings.trustedContact.phone.replace(/\D/g, "").slice(-10)}` : ""}?text=${encodeURIComponent(`I'm on a date via Isle. You can see where I am until it ends: ${shareUrl}`)}`}><Share2 size={15} /> WhatsApp</Button>
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-2 pt-2">
                   <a href="tel:112" className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-[16px] bg-danger font-semibold text-white"><Phone size={18} /> Emergency 112</a>
                   <Button variant="secondary" className="flex-1" href={`/chats/${match.id}`}><Flag size={17} /> Report</Button>
                 </div>
-                {locShare && <PrototypeTag className="mt-2">Location sharing simulated</PrototypeTag>}
+                {!LIVE && locShare && <PrototypeTag className="mt-2">Location sharing is simulated in the offline demo</PrototypeTag>}
               </Card>
             </section>
 
-            {depositOn && (
+            {(depositOn || extras?.deposits.some((d) => d.user_id === me.id)) && (
               <Card tone="peri" className="text-[14px] text-peri-ink">
-                <SectionLabel>Your ₹99 deposit</SectionLabel>
-                Held safely. Both {them.name} and you locked it in. Refunded automatically after you both check in.
-                <PrototypeTag className="mt-2">Test mode</PrototypeTag>
+                <SectionLabel>Your ₹99 show-up promise</SectionLabel>
+                Held safely by Razorpay. Refunded after you both check in. If {them.name} doesn&apos;t come, you get yours back plus theirs as Isle credit.
+                <PrototypeTag className="mt-2">Test mode: no real money moves</PrototypeTag>
               </Card>
             )}
+            {extras?.bundles.filter((b) => b.status === "paid").map((b) => (
+              <Card key={b.user_id} tone="butter" className="text-[14px] text-butter-ink">
+                <SectionLabel>☕ Coffee and dessert for two</SectionLabel>
+                Prepaid{b.user_id === me.id ? " by you" : ` by ${them.name}`}. Show code <b className="font-display text-[17px] tracking-widest text-charcoal">ISLE-{b.code}</b> at the counter.
+              </Card>
+            ))}
 
             <button onClick={() => setCancel(true)} className="min-h-12 w-full text-[14px] font-semibold text-muted">Need to cancel or reschedule?</button>
           </>
@@ -122,6 +175,7 @@ function DateView({ planId }: { planId: string }) {
                   <p className="mt-1 text-[14px] text-muted">Your chat stays open. Keep talking and see where it goes.</p>
                 </>
               )}
+              {extras?.deposits.find((d) => d.user_id === me.id)?.status === "refunded" && <div className="mt-4 rounded-2xl bg-peri-soft p-3 text-[13.5px] text-peri-ink">Your ₹99 show-up promise has been refunded.</div>}
               <div className="mt-4 rounded-2xl bg-sage-soft p-3 text-[13.5px] text-sage-ink"><Check size={15} className="mr-1 inline" />Date attended. Your private show-up record is updated{me.reliable ? ", and your profile shows the Reliable badge" : ""}.</div>
               <Button variant="secondary" full className="mt-3" href={`/chats/${match.id}`}>Back to chat</Button>
             </Card>
@@ -131,28 +185,18 @@ function DateView({ planId }: { planId: string }) {
         {plan.stage === "cancelled" && <EmptyState mood="calm" title="This date was cancelled" body="Refund rules were applied. You can plan something else from the chat." action={<Button href={`/chats/${match.id}`}>Back to chat</Button>} />}
       </main>
 
-      <Sheet open={qr} onClose={() => { setQr(false); setScanning(false); }} title="Check in together">
-        <div className="flex flex-col items-center text-center">
-          <p className="text-[14px] text-muted">Show this to {them.name}, or scan theirs.</p>
-          <div className="mt-4 rounded-[24px] bg-white p-4 shadow-soft"><QRCodeSVG value={`isle://checkin/${plan.id}/${me.id}`} size={200} fgColor="#1b2d45" /></div>
-          <p className="mt-2 text-[12.5px] text-muted">Code changes every visit and works only at {venue?.name ?? "the venue"}.</p>
-          {scanning ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 flex items-center gap-2 font-semibold text-sage-ink"><Navigation size={18} className="animate-pulse" /> Scanning {them.name}&apos;s code…</motion.div>
-          ) : (
-            <Button full className="mt-5" onClick={() => { setScanning(true); setTimeout(() => { checkIn(plan.id); setQr(false); setScanning(false); toast(`Checked in with ${them.name}. Have a lovely time!`, "good"); }, 1500); }}><ScanLine size={18} /> Scan {them.name}&apos;s code</Button>
-          )}
-          <PrototypeTag className="mt-3">Scanning is simulated in this demo</PrototypeTag>
-        </div>
+      <Sheet open={qr} onClose={() => setQr(false)} title="Check in together">
+        {qr && <CheckIn plan={plan} them={them} me={me} onDone={() => setQr(false)} />}
       </Sheet>
 
       <Sheet open={cancel} onClose={() => setCancel(false)} title="Cancel or reschedule">
         <div className="space-y-2 text-[14px]">
           <p className={clsx("rounded-xl p-3", hoursAway >= 24 ? "bg-sage-soft text-sage-ink" : "bg-butter-soft text-butter-ink")}>
-            {hoursAway >= 24 ? "More than 24 hours away: cancel free, any deposits are fully refunded." : `Less than 24 hours away: ${depositOn ? `half your ₹99 goes to ${them.name}.` : "no deposit, so no charge."} Cancelling for safety reasons is never penalised.`}
+            {hoursAway >= 24 ? "More than 24 hours away: cancel free. Any deposits and bundles are refunded in full." : "Less than 24 hours away: deposits and bundles are still refunded in full, but late cancellations go on your private show-up record. Cancelling for safety reasons is never counted."}
           </p>
           <Button variant="secondary" full href={`/chats/${match.id}/plan`} onClick={() => useYaar.getState().updatePlan(plan.id, { stage: "time" })}>Pick a new time instead</Button>
-          <Button variant="danger" full onClick={() => { cancelPlan(plan.id); setCancel(false); }}>Cancel date</Button>
-          <Button variant="ghost" full onClick={() => { cancelPlan(plan.id); setCancel(false); toast("Cancelled for safety. Nothing was charged.", "info"); }}>I don&apos;t feel safe going</Button>
+          <Button variant="danger" full onClick={() => { void cancelAndRefund(); setCancel(false); }}>Cancel date</Button>
+          <Button variant="ghost" full onClick={() => { void cancelAndRefund(); setCancel(false); toast("Cancelled for safety. Any payments are being refunded.", "info"); }}>I don&apos;t feel safe going</Button>
         </div>
       </Sheet>
     </>

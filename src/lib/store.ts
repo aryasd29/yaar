@@ -5,7 +5,7 @@ import { lastYaarHour } from "./config";
 import { DEMO_PEOPLE, RADAR_DEMO, VENUES } from "./seed";
 import { compatibilityScore, DAY, eligible, suggestIdeas, uid } from "./logic";
 import * as remote from "./remote";
-import type { Battery, DatePlan, Match, Message, PlusPlan, PlusState, Prefs, Profile, ReactTarget, Reaction, Report, Settings } from "./types";
+import type { Battery, DatePlan, Match, Message, PlusPlan, PlusState, Prefs, Profile, ReactTarget, Reaction, Report, Settings, TableEvent } from "./types";
 import { FREEZE_DAYS, SECOND_TIDE_HOUR, SECOND_TIDE_SIZE, fitsLifestyle, isPlus, monthKey, sampleLifestyle, startPlus } from "./plus";
 
 /** Sample people carry stable lifestyle details so Plus filters have something to work with. */
@@ -41,6 +41,11 @@ interface State {
   starterPlan: { situation?: string; interests: string[]; area?: string; done: string[] };
   /** Isle Plus membership (null = not a member). */
   plus: PlusState | null;
+  /** Isle credit in rupees (from no-show payouts), live app only. */
+  credit: number;
+  /** Real Tables from the database (live app). */
+  liveTables: TableEvent[];
+  tablesLoaded: boolean;
   toasts: Toast[];
   celebrate: string | null; // matchId to celebrate
 }
@@ -101,11 +106,20 @@ const defaultSettings: Settings = {
   hideFromWork: true, hideFromCollege: true, showWorkAfterMatch: true, locationVisibility: "area",
 };
 
+const L = () => import("./live");
+let secondTideAsked = false;
+
+/** Sample people exist only in the offline demo. The live app shows real members only. */
+// Read straight from the environment: remote.ts and this file import each other, so remote.LIVE
+// may not be ready yet while this module is first evaluated.
+const LIVE_ENV = !!(process.env.NEXT_PUBLIC_SUPABASE_URL && (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY));
+const SAMPLES = LIVE_ENV ? [] : DEMO_PEOPLE;
+
 const initial: State = {
   hydrated: false, authed: false, me: null, prefs: defaultPrefs, settings: defaultSettings,
-  people: withLifestyle(DEMO_PEOPLE), reactions: [], matches: [], messages: [], plans: [], passes: [], blocks: [], reports: [],
+  people: withLifestyle(SAMPLES), reactions: [], matches: [], messages: [], plans: [], passes: [], blocks: [], reports: [],
   drop: { day: "", ids: [], opened: [] }, clockOffset: 0, dismissedNudges: {}, joinedTables: [], joinedCircles: [],
-  dismissedFlags: [], notifRead: {}, starterPlan: { interests: [], done: [] }, plus: null, toasts: [], celebrate: null,
+  dismissedFlags: [], notifRead: {}, starterPlan: { interests: [], done: [] }, plus: null, credit: 0, liveTables: [], tablesLoaded: false, toasts: [], celebrate: null,
 };
 
 
@@ -130,6 +144,7 @@ export const useYaar = create<State & Actions>()(
       const makeMatch = (other: string, at = now()): Match => ({ id: uid("match"), users: [meId(), other], createdAt: at, lastActivityAt: at, status: "active" });
 
       const simulateReply = (matchId: string) => {
+        if (remote.LIVE) return;
         const m = get().matches.find((x) => x.id === matchId);
         if (!m) return;
         const other = person(m.users[1]);
@@ -215,8 +230,13 @@ export const useYaar = create<State & Actions>()(
         now,
         signIn: (method, phone) => set({ authed: true, authMethod: method, phone }),
         completeOnboarding: (me, prefs, opts) => {
-          const { extraPeople, ...world } = seedWorld(me, prefs);
-          set({ me, prefs, ...world, people: withLifestyle([...DEMO_PEOPLE, ...extraPeople]), drop: { day: "", ids: [], opened: [] }, celebrate: null });
+          if (remote.LIVE) {
+            // Real members only: start with an empty world and load real people from the database.
+            set((st) => ({ me, prefs, people: st.people.filter((p) => !remote.isSample(p.id)), reactions: [], matches: [], messages: [], plans: [], drop: { day: "", ids: [], opened: [] }, celebrate: null }));
+          } else {
+            const { extraPeople, ...world } = seedWorld(me, prefs);
+            set({ me, prefs, ...world, people: withLifestyle([...DEMO_PEOPLE, ...extraPeople]), drop: { day: "", ids: [], opened: [] }, celebrate: null });
+          }
           get().ensureDrop();
           if (remote.LIVE && !remote.isSample(me.id) && !opts?.fromServer) { void remote.pushProfile(true)?.then(() => remote.loadEverything()); remote.startLive(); remote.track("signup_completed"); }
         },
@@ -238,6 +258,13 @@ export const useYaar = create<State & Actions>()(
           if (s.drop.day === today) {
             // Second Tide (Isle Plus): a few more people at 10 PM, once a day.
             const hour = new Date(now()).getHours();
+            if (remote.LIVE) {
+              if (plusOn && hour >= SECOND_TIDE_HOUR && !secondTideAsked) {
+                secondTideAsked = true;
+                void L().then(async (l) => { const n = await l.secondTide(s.drop.ids); if (n) get().toast(`The Second Tide brought ${n} more bottle${n === 1 ? "" : "s"}.`, "good"); });
+              }
+              return;
+            }
             if (plusOn && hour >= SECOND_TIDE_HOUR && s.plus!.secondTideDay !== today) {
               const seen = new Set([...s.drop.ids, ...s.passes, ...s.blocks, ...s.matches.flatMap((m) => m.users), ...s.reactions.filter((r) => r.from === s.me!.id).map((r) => r.to)]);
               const more = s.people.filter((p) => p.id !== s.me!.id && !seen.has(p.id) && eligible(s.me!, s.prefs, p) && s.prefs.intents.includes(p.intent) && fitsLifestyle(s.prefs, p))
@@ -411,30 +438,37 @@ export const useYaar = create<State & Actions>()(
         setStarter: (patch) => set((s) => ({ starterPlan: { ...s.starterPlan, ...patch } })),
         isPlus: () => isPlus(get().plus, now()),
         activatePlus: (plan, paymentId) => {
-          set((s) => ({ plus: startPlus(plan, now(), paymentId, s.plus) }));
-          if (remote.LIVE) remote.pushProfile();
+          // Live app: the server already recorded the membership; just reload it.
+          if (remote.LIVE) void L().then((l) => l.loadCommerce());
+          else set((s) => ({ plus: startPlus(plan, now(), paymentId, s.plus) }));
           remote.track("plus_started", { plan });
         },
-        cancelPlus: () => { set((s) => (s.plus ? { plus: { ...s.plus, autoRenew: false } } : {})); if (remote.LIVE) remote.pushProfile(); },
-        resumePlus: () => { set((s) => (s.plus ? { plus: { ...s.plus, autoRenew: true } } : {})); if (remote.LIVE) remote.pushProfile(); },
-        useFreeSeat: () => { set((s) => (s.plus ? { plus: { ...s.plus, freeSeatsUsed: [...s.plus.freeSeatsUsed, monthKey(now())] } } : {})); if (remote.LIVE) remote.pushProfile(); },
+        cancelPlus: () => { set((s) => (s.plus ? { plus: { ...s.plus, autoRenew: false } } : {})); if (remote.LIVE) void L().then((l) => l.setAutoRenew(false)); },
+        resumePlus: () => { set((s) => (s.plus ? { plus: { ...s.plus, autoRenew: true } } : {})); if (remote.LIVE) void L().then((l) => l.setAutoRenew(true)); },
+        useFreeSeat: () => { if (!remote.LIVE) set((s) => (s.plus ? { plus: { ...s.plus, freeSeatsUsed: [...s.plus.freeSeatsUsed, monthKey(now())] } } : {})); },
         freezeMatches: () => {
           const t = now();
+          if (remote.LIVE) {
+            set((s) => ({ plus: s.plus ? { ...s.plus, freezeUntil: t + FREEZE_DAYS * DAY } : s.plus }));
+            void L().then((l) => l.freeze(FREEZE_DAYS));
+            return;
+          }
           set((s) => ({
             plus: s.plus ? { ...s.plus, freezeUntil: t + FREEZE_DAYS * DAY } : s.plus,
             matches: s.matches.map((m) => (m.status === "active" ? { ...m, lastActivityAt: Math.max(m.lastActivityAt, t) } : m)),
           }));
           if (remote.LIVE) { remote.pushProfile(); get().matches.filter((m) => m.status === "active" && !remote.isSample(m.users[1])).forEach((m) => void remote.touchMatch(m.id)); }
         },
-        unfreezeMatches: () => { set((s) => (s.plus ? { plus: { ...s.plus, freezeUntil: undefined } } : {})); if (remote.LIVE) remote.pushProfile(); },
+        unfreezeMatches: () => { set((s) => (s.plus ? { plus: { ...s.plus, freezeUntil: undefined } } : {})); if (remote.LIVE) void L().then((l) => l.freeze(0)); },
         sparkAgain: (matchId) => {
           const s = get();
           if (!isPlus(s.plus, now()) || s.plus!.sparked.includes(matchId)) return false;
           const m = s.matches.find((x) => x.id === matchId);
           if (!m || m.status === "ended") return false;
           set({ plus: { ...s.plus!, sparked: [...s.plus!.sparked, matchId] }, matches: s.matches.map((x) => (x.id === matchId ? { ...x, lastActivityAt: now() } : x)) });
-          if (remote.LIVE && !remote.isSample(m.users[1])) void remote.touchMatch(matchId);
-          get().sendMessage(matchId, "✨ sparked our chat again. Still up for that coffee?");
+          if (remote.LIVE) {
+            void L().then(async (l) => { if (await l.sparkAgain(matchId)) get().sendMessage(matchId, "✨ sparked our chat again. Still up for that coffee?"); else get().toast("Couldn't spark this chat again.", "warn"); });
+          } else get().sendMessage(matchId, "✨ sparked our chat again. Still up for that coffee?");
           return true;
         },
         rewind: () => {
@@ -468,7 +502,26 @@ export const useYaar = create<State & Actions>()(
         const { toasts, hydrated, celebrate, ...rest } = s;
         return rest;
       },
-      onRehydrateStorage: () => () => { setTimeout(() => useYaar.setState({ hydrated: true }), 0); },
+      onRehydrateStorage: () => () => {
+        setTimeout(() => {
+          // Older versions of the live app kept sample people on this device; clear them out.
+          if (remote.LIVE) {
+            const st = useYaar.getState();
+            const keepMatch = st.matches.filter((m) => !m.users.some((u) => remote.isSample(u)));
+            const ids = new Set(keepMatch.map((m) => m.id));
+            useYaar.setState({
+              people: st.people.filter((p) => !remote.isSample(p.id)),
+              matches: keepMatch,
+              messages: st.messages.filter((m) => ids.has(m.matchId)),
+              plans: st.plans.filter((pl) => ids.has(pl.matchId)),
+              reactions: st.reactions.filter((r) => !remote.isSample(r.from) && !remote.isSample(r.to)),
+              drop: { ...st.drop, ids: st.drop.ids.filter((id) => !remote.isSample(id)) },
+              clockOffset: 0,
+            });
+          }
+          useYaar.setState({ hydrated: true });
+        }, 0);
+      },
     },
   ),
 );
@@ -478,8 +531,8 @@ export const EXPIRE_DAYS = 15;
 export function matchState(m: Match, now: number) {
   if (m.status === "ended") return { ended: true, expiring: false, daysQuiet: 0 } as const;
   // Isle Plus "Freeze my matches": nothing closes while frozen.
-  const freeze = useYaar.getState().plus?.freezeUntil;
-  if (freeze && freeze > now) return { ended: false, expiring: false, daysQuiet: 0 } as const;
+  const freeze = Math.max(useYaar.getState().plus?.freezeUntil ?? 0, m.frozenUntil ?? 0);
+  if (freeze > now) return { ended: false, expiring: false, daysQuiet: 0 } as const;
   const daysQuiet = Math.floor((now - m.lastActivityAt) / DAY);
   return { ended: daysQuiet >= EXPIRE_DAYS, expiring: daysQuiet === EXPIRE_DAYS - 1, daysQuiet } as const;
 }

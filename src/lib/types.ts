@@ -83,6 +83,8 @@ export interface Match {
   endedBy?: string;
   endReason?: string;
   seenCelebration?: boolean;
+  /** Isle Plus "Freeze my matches": the chat can't close before this time. */
+  frozenUntil?: number;
 }
 
 export type MessageKind = "text" | "system" | "game" | "date";
@@ -180,4 +182,6 @@ export interface TableEvent {
   /** days from today; used to build a real date relative to now */
   dayOffset: number; time: string;
   seats: number; left: number; price: number; scene: string; photoQuery: string; blurb: string;
+  /** Real Tables (live app): exact start time, host and whether I'm going. */
+  startsAt?: number; live?: boolean; host?: string; hostName?: string; hosting?: boolean; going?: boolean; cancelled?: boolean;
 }

@@ -230,7 +230,8 @@ function PlusTideRow() {
   const router = useRouter();
   const t = now();
   if (!isPlus(plus, t)) return <PlusLock className="mt-8 lg:col-span-2" title="Second Tide at 10 PM" body={`Up to ${SECOND_TIDE_SIZE} more bottles each night, on top of your evening Tide. Plus also lets you rewind a pass.`} />;
-  const arrived = plus!.secondTideDay === drop.day;
+  const istDay = new Date(t + 5.5 * 3_600_000).toISOString().slice(0, 10); // the server records the day in India time
+  const arrived = plus!.secondTideDay === drop.day || plus!.secondTideDay === istDay;
   const hour = new Date(t).getHours();
   const last = passes.length ? people.find((p) => p.id === passes[passes.length - 1]) : undefined;
   return (

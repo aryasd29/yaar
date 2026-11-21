@@ -1,45 +1,84 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import webpush from "web-push";
+import { adminClient, caller } from "@/lib/server/supa";
 
 /**
- * Email the other person when something important happens (new match, confirmed date).
- * Needs SUPABASE_SERVICE_ROLE_KEY (server only, never exposed) and RESEND_API_KEY.
- * Without them it does nothing. The caller must be signed in and be part of the match.
+ * Tell the other person when something happens: a new match, a confirmed date or a new message.
+ *  - Push notifications to every device they've turned them on for (needs VAPID keys).
+ *  - Email for matches and dates (needs RESEND_API_KEY).
+ * Message notifications never include the message itself, and are sent at most once a minute per chat.
+ * The caller must be signed in and part of the match. Each person's notification settings are respected.
  */
+type Prefs = { reactions?: boolean; messages?: boolean; dateReminders?: boolean };
+
 export async function POST(req: Request) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL, service = process.env.SUPABASE_SERVICE_ROLE_KEY, resend = process.env.RESEND_API_KEY;
-  if (!url || !service || !resend) return NextResponse.json({ skipped: true });
-  const token = req.headers.get("authorization")?.replace(/^Bearer /, "");
+  const db = adminClient();
+  if (!db) return NextResponse.json({ skipped: true });
+  const user = await caller(req);
+  if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   const { type, matchId } = await req.json().catch(() => ({}));
-  if (!token || !matchId || !["match", "date"].includes(type)) return NextResponse.json({ error: "Bad request" }, { status: 400 });
+  if (!matchId || !["match", "date", "message"].includes(type)) return NextResponse.json({ error: "Bad request" }, { status: 400 });
 
-  const admin = createClient(url, service, { auth: { persistSession: false } });
-  const { data: caller } = await admin.auth.getUser(token);
-  if (!caller.user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-  const { data: match } = await admin.from("matches").select("*").eq("id", matchId).maybeSingle();
-  if (!match || ![match.user_a, match.user_b].includes(caller.user.id)) return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  const { data: match } = await db.from("matches").select("*").eq("id", matchId).maybeSingle();
+  if (!match || ![match.user_a, match.user_b].includes(user.id)) return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  const otherId = match.user_a === user.id ? match.user_b : match.user_a;
 
-  const otherId = match.user_a === caller.user.id ? match.user_b : match.user_a;
-  const [{ data: other }, { data: me }, { data: priv }] = await Promise.all([
-    admin.auth.admin.getUserById(otherId),
-    admin.from("profiles").select("data").eq("id", caller.user.id).maybeSingle(),
-    admin.from("private_details").select("data").eq("id", otherId).maybeSingle(),
+  // At most one message notification per chat per minute
+  if (type === "message") {
+    const { count } = await db.from("messages").select("id", { count: "exact", head: true })
+      .eq("match_id", matchId).eq("from_id", user.id).gt("created_at", new Date(Date.now() - 60_000).toISOString());
+    if ((count ?? 0) > 1) return NextResponse.json({ skipped: "recent" });
+  }
+
+  const [{ data: me }, { data: priv }] = await Promise.all([
+    db.from("profiles").select("data").eq("id", user.id).maybeSingle(),
+    db.from("private_details").select("data").eq("id", otherId).maybeSingle(),
   ]);
-  const email = other.user?.email;
-  const prefs = (priv?.data as { settings?: { notifications?: Record<string, boolean> } } | null)?.settings?.notifications;
-  if (!email || (type === "match" && prefs?.reactions === false) || (type === "date" && prefs?.dateReminders === false)) return NextResponse.json({ skipped: true });
+  const prefs = (priv?.data as { settings?: { notifications?: Prefs } } | null)?.settings?.notifications ?? {};
+  const wanted = type === "match" ? prefs.reactions !== false : type === "date" ? prefs.dateReminders !== false : prefs.messages !== false;
+  if (!wanted) return NextResponse.json({ skipped: "settings" });
 
   const name = (me?.data as { name?: string } | null)?.name ?? "Someone";
   const site = new URL(req.url).origin;
-  const subject = type === "match" ? `You and ${name} found each other on Isle` : `${name} confirmed your date on Isle`;
-  const line = type === "match" ? `${name} reacted back. Your chat is open whenever you're ready.` : `${name} locked in your date. The details are in your chat.`;
-  const r = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${resend}` },
-    body: JSON.stringify({
-      from: process.env.NOTIFY_FROM ?? "Isle <onboarding@resend.dev>", to: email, subject,
-      html: `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto;padding:24px;background:#FFF9F0;border-radius:20px;color:#1b2d45"><h2 style="margin:0 0 8px">${subject}</h2><p>${line}</p><p><a href="${site}/chats/${matchId}" style="display:inline-block;background:#FF7A5C;color:#1b2d45;padding:12px 20px;border-radius:14px;font-weight:700;text-decoration:none">Open Isle</a></p><p style="font-size:12px;color:#5d6878">You can turn these emails off in Profile → Notifications.</p></div>`,
-    }),
-  });
-  return NextResponse.json({ sent: r.ok });
+  const title = type === "match" ? `You and ${name} found each other` : type === "date" ? `${name} confirmed your date` : `New message from ${name}`;
+  const body = type === "match" ? `${name} reacted back. Your chat is open.` : type === "date" ? "The details are in your chat." : "Open Isle to read it.";
+  const url = `/chats/${matchId}`;
+  const out: { push?: number; email?: boolean } = {};
+
+  // Push
+  const pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY, priv_ = process.env.VAPID_PRIVATE_KEY;
+  if (pub && priv_) {
+    webpush.setVapidDetails(process.env.VAPID_SUBJECT ?? "mailto:hello@isle.app", pub, priv_);
+    const { data: subs } = await db.from("push_subscriptions").select("endpoint, keys").eq("user_id", otherId);
+    let sent = 0;
+    for (const s of subs ?? []) {
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify({ title, body, url, tag: `${type}-${matchId}` }), { TTL: 3600 });
+        sent++;
+      } catch (e) {
+        const code = (e as { statusCode?: number }).statusCode;
+        if (code === 404 || code === 410) await db.from("push_subscriptions").delete().eq("endpoint", s.endpoint); // device unsubscribed
+      }
+    }
+    out.push = sent;
+  }
+
+  // Email (matches and dates only)
+  const resend = process.env.RESEND_API_KEY;
+  if (resend && type !== "message") {
+    const { data: other } = await db.auth.admin.getUserById(otherId);
+    const email = other.user?.email;
+    if (email) {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resend}` },
+        body: JSON.stringify({
+          from: process.env.NOTIFY_FROM ?? "Isle <onboarding@resend.dev>", to: email, subject: `${title} on Isle`,
+          html: `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto;padding:24px;background:#FFF9F0;border-radius:20px;color:#1b2d45"><h2 style="margin:0 0 8px">${title}</h2><p>${body}</p><p><a href="${site}${url}" style="display:inline-block;background:#FF7A5C;color:#1b2d45;padding:12px 20px;border-radius:14px;font-weight:700;text-decoration:none">Open Isle</a></p><p style="font-size:12px;color:#5d6878">You can turn these off in Profile → Notifications.</p></div>`,
+        }),
+      });
+      out.email = r.ok;
+    }
+  }
+  return NextResponse.json(out);
 }

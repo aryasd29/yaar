@@ -236,7 +236,8 @@ export const DEMO_TABLES: TableEvent[] = [
 export const TABLE_AREAS = [...new Set(DEMO_TABLES.map((t) => t.area))].sort();
 export const TABLE_CATEGORIES = [...new Set(DEMO_TABLES.map((t) => t.circle))].sort();
 
-export function tableDate(t: Pick<TableEvent, "dayOffset" | "time">, now: number) {
+export function tableDate(t: Pick<TableEvent, "dayOffset" | "time" | "startsAt">, now: number) {
+  if (t.startsAt) return new Date(t.startsAt);
   const d = new Date(now);
   d.setDate(d.getDate() + t.dayOffset);
   const [hm, ap] = t.time.split(" ");

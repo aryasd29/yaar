@@ -40,6 +40,8 @@ export function lastYaarHour(now: number) {
 const DEMO_KEY = "yaar-demo-tools";
 /** Demo tools are for evaluators only: env flag, or opt-in per device with ?demo=1 (?demo=0 turns them off). */
 export function demoToolsEnabled() {
+  // The live app is a real product: no clock-moving or demo tools.
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) return false;
   if (process.env.NEXT_PUBLIC_SHOW_DEMO_TOOLS === "true") return true;
   if (typeof window === "undefined") return false;
   try {

@@ -10,7 +10,10 @@ export default function Privacy() {
         <ul><li><b>Account:</b> your email address or phone number, and a password if you set one.</li>
           <li><b>Your scrapbook:</b> first name, age, gender, pronouns (optional), neighbourhood, what you&apos;re looking for, photos, captions, hot take, voice note, starter pack, interests and This or That answers.</li>
           <li><b>Private details:</b> workplace and college (optional), used only to keep you hidden from colleagues and classmates. They&apos;re never shown to anyone.</li>
-          <li><b>Activity:</b> reactions, matches, messages, date plans, reports and blocks.</li>
+          <li><b>Activity:</b> reactions, matches, messages, date plans, Tables you host or join, reports and blocks.</li>
+          <li><b>Selfie check (optional):</b> the selfie you take for the Selfie-checked badge and the check&apos;s result. The face comparison runs on your own device; only the selfie and a match score are saved, privately, so Isle&apos;s team can spot-check it. Other members never see it. Deleting your account deletes it.</li>
+          <li><b>Payments:</b> what you bought, the amount and Razorpay&apos;s payment reference. Card and UPI details go to Razorpay, never to Isle.</li>
+          <li><b>Live location (only when you turn it on):</b> while you share your location from a date, your phone sends it to Isle so the person you sent the link to can see it. Sharing stops after 6 hours or when you turn it off.</li>
           <li><b>Basic usage events:</b> for example &quot;a match was made&quot; or &quot;a date was confirmed&quot;, so we can tell whether Isle is actually helping people meet. We don&apos;t sell this or use it for advertising.</li></ul></section>
       <section><h2>What we don&apos;t do</h2>
         <ul><li>We don&apos;t sell your data or show you ads.</li>

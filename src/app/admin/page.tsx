@@ -21,6 +21,8 @@ export default function AdminPage() {
   return <Frame nav width="wide"><Admin /></Frame>;
 }
 
+type VerificationRow = { user_id: string; name: string | null; status: "verified" | "revoked"; selfie_path: string | null; match_score: number | null; created_at: string; photo: string | null };
+
 function Admin() {
   const me = useRequireMe();
   const toast = useYaar((s) => s.toast);
@@ -29,6 +31,7 @@ function Admin() {
   const [funnel, setFunnel] = useState<Step[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [filter, setFilter] = useState<"open" | "all">("open");
+  const [checks, setChecks] = useState<(VerificationRow & { selfie?: string })[]>([]);
 
   const load = useCallback(async () => {
     if (!supa) return;
@@ -36,6 +39,12 @@ function Admin() {
     if (r.data) setReports(r.data as Report[]);
     if (f.data) setFunnel(f.data as Step[]);
     if (s.data) setStats((s.data as Stats[])[0] ?? null);
+    const v = await supa.rpc("admin_verifications");
+    if (v.data) {
+      const rows = v.data as VerificationRow[];
+      const signed = await Promise.all(rows.slice(0, 40).map((x) => x.selfie_path ? supa!.storage.from("selfies").createSignedUrl(x.selfie_path, 600) : Promise.resolve({ data: null })));
+      setChecks(rows.map((x, i) => ({ ...x, selfie: signed[i]?.data?.signedUrl })));
+    }
   }, []);
 
   useEffect(() => { if (me) void amAdmin().then((ok) => { setAllowed(ok); if (ok) void load(); }); }, [me, load]);
@@ -67,7 +76,7 @@ function Admin() {
 
       <section className="mt-6" aria-labelledby="funnel">
         <h2 id="funnel" className="text-[20px]">Funnel to the north star</h2>
-        <p className="text-[13.5px] text-muted">Unique people who reached each step. Includes demo activity with sample profiles.</p>
+        <p className="text-[13.5px] text-muted">Unique people who reached each step.</p>
         <ol className="mt-3 space-y-2">
           {funnel.map((s) => (
             <li key={s.step} className="grid grid-cols-[180px_1fr_60px] items-center gap-3 text-[14px] md:grid-cols-[240px_1fr_80px]">
@@ -103,6 +112,32 @@ function Admin() {
                   {r.status === "open"
                     ? <Button variant="ghost" className="!min-h-10" onClick={() => act("admin_set_report", { report_id: r.id, new_status: "reviewed" }, "Marked as reviewed")}>Mark reviewed</Button>
                     : <Button variant="ghost" className="!min-h-10" onClick={() => act("admin_set_report", { report_id: r.id, new_status: "open" }, "Reopened")}>Reopen</Button>}
+                </div>
+              </Card></li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-8" aria-labelledby="checks">
+        <h2 id="checks" className="text-[20px]">Selfie checks</h2>
+        <p className="text-[13.5px] text-muted">Badges are granted automatically after the on-device check. Spot-check the selfie against the scrapbook photo and revoke anything that isn&apos;t the same person.</p>
+        {checks.length === 0 ? <EmptyState mood="calm" title="No selfie checks yet" body="They'll appear here as members pass the check." /> : (
+          <ul className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {checks.map((c) => (
+              <li key={c.user_id}><Card className="!p-3">
+                <div className="grid grid-cols-2 gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {c.selfie ? <img src={c.selfie} alt={`Selfie from ${c.name ?? "member"}`} className="aspect-square w-full rounded-[12px] object-cover" /> : <div className="grid aspect-square place-items-center rounded-[12px] bg-vanilla text-[12px] text-muted">No selfie</div>}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {c.photo ? <img src={c.photo} alt={`Scrapbook photo of ${c.name ?? "member"}`} className="aspect-square w-full rounded-[12px] object-cover" /> : <div className="grid aspect-square place-items-center rounded-[12px] bg-vanilla text-[12px] text-muted">No photo</div>}
+                </div>
+                <p className="mt-2 font-semibold">{c.name ?? "Member"} <span className="text-[12.5px] font-normal text-muted">· match {c.match_score != null ? `${Math.round(c.match_score * 100)}%` : "n/a"}</span></p>
+                <div className="mt-2 flex items-center justify-between">
+                  <span className={clsx("rounded-full px-2.5 py-0.5 text-[12px] font-bold", c.status === "verified" ? "bg-sage-soft text-sage-ink" : "bg-coral-soft text-coral-ink")}>{c.status}</span>
+                  {c.status === "verified"
+                    ? <Button variant="danger" className="!min-h-9 !px-3" onClick={() => { if (confirm(`Remove ${c.name ?? "this member"}'s Selfie-checked badge?`)) void act("admin_set_verification", { u: c.user_id, new_status: "revoked" }, "Badge removed"); }}>Revoke</Button>
+                    : <Button variant="secondary" className="!min-h-9 !px-3" onClick={() => act("admin_set_verification", { u: c.user_id, new_status: "verified" }, "Badge restored")}>Restore</Button>}
                 </div>
               </Card></li>
             ))}

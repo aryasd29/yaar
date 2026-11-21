@@ -94,7 +94,7 @@ function Scrapbook({ id }: { id: string }) {
         <section>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-[30px] leading-none">{p.name}, {p.age}</h1>{!preview && <SampleBadge id={p.id} />}
-            {p.verified && <Badge><span title="Passed the selfie check at sign-up. In this version the check is simulated; production would use a verification provider.">✓ Selfie-checked</span></Badge>}
+            {p.verified && <Badge><span title="Passed Isle’s automatic selfie check: a live camera check matched to their scrapbook photos. It isn’t a promise about character, so keep using the safety tools.">✓ Selfie-checked</span></Badge>}
             {p.reliable && <Badge tone="peri">Reliable</Badge>}
           </div>
           <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] text-muted">{(preview ? displayArea(p, settings) : displayArea(p)) && <span className="inline-flex items-center gap-1"><MapPin size={14} /> {preview ? displayArea(p, settings) : displayArea(p)}</span>}{p.pronouns && <span>{p.pronouns}</span>}</p>

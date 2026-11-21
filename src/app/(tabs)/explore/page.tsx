@@ -9,7 +9,10 @@ import { Scene } from "@/components/Scene";
 import { Card, PrototypeTag, SectionLabel } from "@/components/ui";
 import { Coco } from "@/components/Coco";
 import { useYaar } from "@/lib/store";
-import { CIRCLES, DEMO_TABLES, tableDate } from "@/lib/seed";
+import { CIRCLES, tableDate } from "@/lib/seed";
+import { useTables } from "@/lib/useTables";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui";
 
 const PLANS = [
   { title: "Sunday at Cubbon Park", body: "Morning walk, then breakfast at a darshini nearby.", scene: "plant" },
@@ -19,15 +22,16 @@ const PLANS = [
 
 export default function Explore() {
   const me = useRequireMe();
-  const { joinedTables, joinedCircles, toggleCircle, now, starterPlan } = useYaar();
+  const { joinedCircles, toggleCircle, now, starterPlan } = useYaar();
+  const { tables, isGoing, live } = useTables();
   if (!me) return <Loading />;
   const t = now();
-  const upcoming = [...DEMO_TABLES].sort((a, b) => tableDate(a, t).getTime() - tableDate(b, t).getTime()).slice(0, 6);
-  const mine = DEMO_TABLES.filter((x) => joinedTables.includes(x.id));
+  const upcoming = tables.filter((x) => !x.cancelled).sort((a, b) => tableDate(a, t).getTime() - tableDate(b, t).getTime()).slice(0, 6);
+  const mine = tables.filter((x) => isGoing(x));
   return (
     <main className="pb-10">
       <PageHeader title="The Mainland" sub="Bengaluru beyond your isle. Make friends first and meet people without the pressure." />
-      <div className="px-5 md:px-8 lg:px-10"><PrototypeTag>Events and circles here are sample data. Nothing can actually be booked yet.</PrototypeTag></div>
+      {!live && <div className="px-5 md:px-8 lg:px-10"><PrototypeTag>Events and circles here are sample data.</PrototypeTag></div>}
 
       <Link href="/explore/starter" className="mx-5 mt-4 flex items-center gap-3 rounded-[24px] bg-sage-soft p-4 shadow-soft md:mx-8 lg:mx-10 lg:max-w-[640px]">
         <Coco mood="excited" size={64} bob={false} />
@@ -37,14 +41,21 @@ export default function Explore() {
 
       {mine.length > 0 && (
         <section className="mt-6 px-5 md:px-8 lg:px-10">
-          <SectionLabel>In your plans</SectionLabel>
+          <SectionLabel>Your Tables</SectionLabel>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{mine.map((x) => <EventCard key={x.id} t={x} now={t} going />)}</div>
         </section>
       )}
       <section className="mt-6">
-        <div className="flex items-end justify-between px-5 md:px-8 lg:px-10"><SectionLabel>Tables this week</SectionLabel><Link href="/explore/tables" className="mb-2 min-h-11 content-center text-[13.5px] font-bold text-coral-ink underline-offset-2 hover:underline">Filter all {DEMO_TABLES.length}</Link></div>
+        <div className="flex items-end justify-between px-5 md:px-8 lg:px-10"><SectionLabel>Tables this week</SectionLabel><Link href="/explore/tables" className="mb-2 min-h-11 content-center text-[13.5px] font-bold text-coral-ink underline-offset-2 hover:underline">{tables.length ? `See all ${tables.length}` : "See Tables"}</Link></div>
         <div className="no-scrollbar flex gap-4 overflow-x-auto px-5 pb-3 pt-1 md:px-8 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-10">
-          {upcoming.map((x) => <EventCard key={x.id} t={x} now={t} going={joinedTables.includes(x.id)} compact />)}
+          {upcoming.map((x) => <EventCard key={x.id} t={x} now={t} going={isGoing(x)} compact />)}
+          {upcoming.length === 0 && (
+            <div className="flex w-full flex-col items-start gap-3 rounded-[22px] border-2 border-dashed border-charcoal/30 p-5 lg:col-span-3">
+              <p className="font-display text-[18px] font-extrabold">No Tables this week yet</p>
+              <p className="text-[14px] text-muted">Host one: a walk in Cubbon Park, board games, filter coffee and a book. Small and easy to say yes to.</p>
+              <Button href="/explore/tables/new"><Plus size={17} /> Host a Table</Button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -57,12 +68,12 @@ export default function Explore() {
               <button key={c.id} onClick={() => toggleCircle(c.id)} aria-pressed={on} className={clsx("flex min-h-24 flex-col items-start rounded-[20px] p-3 text-left shadow-soft transition active:scale-[0.97]", on ? "bg-peri-soft" : "bg-paper")}>
                 <span className="text-[24px]" aria-hidden>{c.emoji}</span>
                 <span className="mt-1 font-semibold leading-tight">{c.name}</span>
-                <span className="mt-0.5 flex items-center gap-1 text-[12px] text-muted"><Users size={12} /> {c.members.toLocaleString("en-IN")} · {on ? "Joined" : "Join"}</span>
+                <span className="mt-0.5 flex items-center gap-1 text-[12px] text-muted"><Users size={12} /> {live ? `${tables.filter((x) => x.circle === c.name && !x.cancelled).length} upcoming` : c.members.toLocaleString("en-IN")} · {on ? "Following" : "Follow"}</span>
               </button>
             );
           })}
         </div>
-        <p className="mt-2 text-[12px] text-muted">Joining a circle or Table never signals romantic interest.</p>
+        <p className="mt-2 text-[12px] text-muted">Following a circle puts its Tables in your City Starter Pack. Joining a Table never signals romantic interest.</p>
       </section>
 
       <section className="mt-6 px-5 md:px-8 lg:px-10">

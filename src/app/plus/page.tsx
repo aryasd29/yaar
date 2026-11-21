@@ -53,11 +53,11 @@ function Plus() {
 
   const buy = async () => {
     setBusy(true);
-    const r = await pay([{ kind: "plus", plan }], { name: me.name }, `Isle Plus · ${PLANS[plan].label}`, [`Isle Plus, ${PLANS[plan].label.toLowerCase()} · ₹${PLANS[plan].price}`, PLANS[plan].note]);
+    const r = await pay([{ kind: "plus", plan }], { name: me.name }, `Isle Plus · ${PLANS[plan].label}`);
     setBusy(false);
     if (r.status === "error") return toast(r.error, "warn");
     if (r.status !== "paid") return;
-    activatePlus(plan, r.paymentId);
+    activatePlus(plan, r.payment);
     toast("Welcome to Isle Plus! Your free Tables seat is ready.", "good");
   };
 

@@ -8,7 +8,8 @@ import { EventImage } from "@/components/EventCard";
 import { Button, Chip, PrototypeTag, SectionLabel, TopBar } from "@/components/ui";
 import { Coco } from "@/components/Coco";
 import { useYaar } from "@/lib/store";
-import { CIRCLES, DEMO_TABLES, TABLE_AREAS, fmtPrice, fmtTableWhen, tableDate } from "@/lib/seed";
+import { CIRCLES, TABLE_AREAS, fmtPrice, fmtTableWhen, tableDate } from "@/lib/seed";
+import { useTables } from "@/lib/useTables";
 
 const SITUATIONS = [
   { id: "new", label: "Just moved here", note: "Easy, low-pressure first steps." },
@@ -26,13 +27,14 @@ const TIPS: Record<string, string[]> = {
 
 export default function Starter() {
   const { joinedCircles, toggleCircle, starterPlan: sp, setStarter, now } = useYaar();
+  const { tables: allTables, live } = useTables();
   const t = now();
   const step = !sp.situation ? 0 : sp.interests.length === 0 ? 1 : !sp.area ? 2 : 3;
   const toggleInterest = (c: string) => setStarter({ interests: sp.interests.includes(c) ? sp.interests.filter((x) => x !== c) : [...sp.interests, c] });
 
   // Build the plan from your answers: Tables that match your interests (nearby first), circles to join, and local tips.
-  const tables = DEMO_TABLES
-    .filter((x) => x.left > 0 && (sp.interests.includes(x.circle) || (sp.situation === "new" && x.circle === "New to Bengaluru")))
+  const tables = allTables
+    .filter((x) => x.left > 0 && !x.cancelled && (sp.interests.includes(x.circle) || (sp.situation === "new" && x.circle === "New to Bengaluru")))
     .sort((a, b) => Number(b.area === sp.area) - Number(a.area === sp.area) || a.price - b.price)
     .slice(0, 3);
   const circles = CIRCLES.filter((c) => sp.interests.includes(c.name)).slice(0, 3);
@@ -122,7 +124,7 @@ export default function Starter() {
               </section>
               {doneCount === items.length && <p className="text-center font-hand text-[24px] text-sage-ink">you&apos;re basically a local now ✨</p>}
               <Button full variant="secondary" href="/explore">Back to Explore</Button>
-              <PrototypeTag>Suggestions use sample events</PrototypeTag>
+              {!live && <PrototypeTag>Suggestions use sample events</PrototypeTag>}
             </motion.div>
           )}
         </div>

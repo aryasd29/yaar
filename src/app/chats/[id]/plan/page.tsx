@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { isSample, track } from "@/lib/remote";
+import { LIVE, isSample, pushPlan, track } from "@/lib/remote";
 import { pay, type PayItem } from "@/lib/pay";
 import { bundlePrice, BUNDLE_PRICE, isPlus } from "@/lib/plus";
 import { PlusTag } from "@/components/PlusBits";
@@ -208,15 +208,15 @@ function Planner({ matchId }: { matchId: string }) {
               let paidId: string | undefined;
               if (total > 0) {
                 const items: PayItem[] = [];
-                const lines: string[] = [];
-                if (deposit) { items.push({ kind: "deposit" }); lines.push("Show-up promise · ₹99 (refunded when you both turn up)"); }
-                if (bundle) { items.push({ kind: "bundle", plus: plusOn }); lines.push(`Coffee and dessert for two · ₹${bPrice}`); }
+                if (deposit) items.push({ kind: "deposit", planId: plan.id });
+                if (bundle) items.push({ kind: "bundle", planId: plan.id });
                 setPaying(true);
-                const r = await pay(items, { name: me.name }, `Your date with ${them?.name ?? "your match"}`, lines);
+                if (LIVE) await pushPlan(plan); // the server needs the date saved before it can take payment for it
+                const r = await pay(items, { name: me.name }, `Your date with ${them?.name ?? "your match"}`, { plus: plusOn });
                 setPaying(false);
                 if (r.status === "cancelled") return;
                 if (r.status === "error") return toast(r.error, "warn");
-                paidId = r.paymentId;
+                paidId = r.payment;
                 if (bundle) track("bundle_bought", { plus: plusOn, amount: bPrice });
               }
               updatePlan(plan.id, {
